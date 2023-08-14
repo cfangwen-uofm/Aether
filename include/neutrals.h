@@ -379,6 +379,15 @@ class Neutrals {
 		       bool DoReverseX,
 		       bool DoReverseY,
 		       bool XbecomesY);
+
+  /**********************************************************************
+     \brief Solves for fluid motion horizontally on the CubeSphere
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_cubesphere(Grid& grid, Times& time, Report& report);
 };
 
 #endif  // INCLUDE_NEUTRALS_H_
