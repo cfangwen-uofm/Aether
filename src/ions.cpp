@@ -45,7 +45,7 @@ Ions::species_chars Ions::create_species(Grid grid) {
 //  Initialize Ions class
 // -----------------------------------------------------------------------------
 
-Ions::Ions(Grid grid, Planets planet, Inputs input, Report report) {
+Ions::Ions(Grid grid, Planets planet) {
 
   int64_t nLons = grid.get_nLons();
   int64_t nLats = grid.get_nLats();
@@ -106,7 +106,7 @@ Ions::Ions(Grid grid, Planets planet, Inputs input, Report report) {
   exb_vcgc = make_cube_vector(nLons, nLats, nAlts, 3);
 
   // This gets a bunch of the species-dependent characteristics:
-  int iErr = read_planet_file(planet, input, report);
+  int iErr = read_planet_file(planet);
 
   if (input.get_do_restart()) {
     report.print(1, "Restarting! Reading ion files!");
@@ -124,7 +124,7 @@ Ions::Ions(Grid grid, Planets planet, Inputs input, Report report) {
 // Read in the planet file that describes the species - only ions
 // -----------------------------------------------------------------------------
 
-int Ions::read_planet_file(Planets planet, Inputs input, Report report) {
+int Ions::read_planet_file(Planets planet) {
 
   int iErr = 0;
   std::string hash;
@@ -153,11 +153,54 @@ int Ions::read_planet_file(Planets planet, Inputs input, Report report) {
 }
 
 
+//----------------------------------------------------------------------
+// Reports location of nans inserted into specified variable
+//----------------------------------------------------------------------
+void Ions::nan_test(std::string variable){
+  std::vector<int> locations;
+  std::string message = ("For Ions " + variable + " ");
+  if (variable == "temperature_scgc") {
+    locations = insert_indefinites(temperature_scgc);
+    message += print_nan_vector(locations, temperature_scgc);
+  }
+  if (variable == "density_scgc") {
+    locations = insert_indefinites(density_scgc);
+    message += print_nan_vector(locations, density_scgc);
+  }
+  if (variable == "velocity_vcgc") {
+    locations = insert_indefinites(velocity_vcgc[0]);
+    message +=
+      "at the x loc " + print_nan_vector(locations, velocity_vcgc[0]);
+    locations = insert_indefinites(velocity_vcgc[1]);
+    message +=
+      "at the y loc " + print_nan_vector(locations, velocity_vcgc[1]);
+    locations = insert_indefinites(velocity_vcgc[2]);
+    message +=
+      "at the z loc " + print_nan_vector(locations, velocity_vcgc[2]);
+  }
+  std::cout << message;
+}
+
+//----------------------------------------------------------------------
+// Checks for nans and +/- infinities in density, temp, and velocity
+//----------------------------------------------------------------------
+
+bool Ions::check_for_nonfinites() {
+  bool non_finites_exist = false;
+  if (!all_finite(density_scgc, "density_scgc") ||
+      !all_finite(temperature_scgc, "temperature_scgc") ||
+      !all_finite(velocity_vcgc, "velocity_vcgc"))
+    non_finites_exist = true;
+  if (non_finites_exist)
+    throw std::string("Check for nonfinites failed!!!\n");
+  return non_finites_exist;
+}
+
 // -----------------------------------------------------------------------------
 // Calculate the electron density from the sum of all ion species
 // -----------------------------------------------------------------------------
 
-void Ions::fill_electrons(Report &report) {
+void Ions::fill_electrons() {
 
   int iSpecies;
 
@@ -183,7 +226,7 @@ void Ions::fill_electrons(Report &report) {
 // Will return nSpecies for electrons
 //----------------------------------------------------------------------
 
-int Ions::get_species_id(std::string name, Report &report) {
+int Ions::get_species_id(std::string name) {
 
   std::string function = "Ions::get_species_id";
   static int iFunction = -1;

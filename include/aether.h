@@ -14,6 +14,9 @@
 /// This is for generating random numbers:
 #include <random>
 
+//This is to look into bits for flagging nans and infs
+#include <cstdint>
+
 // Types
 // Precision compile-time aliasing
 #ifdef AETHER_USE_PRECISION_DOUBLE
@@ -130,8 +133,10 @@ using json = nlohmann::json;
 // not done
 #include "parallel.h"
 
+// not done
+#include "calc_momentum_friction.h"
+
 // not commented
 #include "external_msis.h"
-
 
 #endif  // INCLUDE_AETHER_H_

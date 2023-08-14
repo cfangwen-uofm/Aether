@@ -10,9 +10,7 @@
 // Create connectivity between the nodes for message passing for cubesphere
 // ----------------------------------------------------------------------
 
-void Grid::create_cubesphere_connection(Quadtree quadtree,
-                                        Inputs input,
-                                        Report &report) {
+void Grid::create_cubesphere_connection(Quadtree quadtree) {
 
   std::string function = "Grid::create_cubesphere_connection";
   static int iFunction = -1;
@@ -212,8 +210,8 @@ void transformation_metrics(Quadtree quadtree,
       latp = lat2d(i, j);
       lonp = lon2d(i, j);
       
-      sqrt_g(i, j) = R*R*a/(rref*rref*rref);
-      g = sqrt_g(i,j) * sqrt_g(i,j);
+      sqrt_g(i, j) = R * R * a / (rref * rref * rref);
+      g = sqrt_g(i, j) * sqrt_g(i, j);
 
       // metric tensor with lower indices
       double front_factor = R * R / (rref * rref * rref * rref);
@@ -317,9 +315,7 @@ void transformation_metrics(Quadtree quadtree,
 //    - if not restarting, initialize the grid
 // ----------------------------------------------------------------------
 
-void Grid::create_cubesphere_grid(Quadtree quadtree,
-                                  Inputs input,
-                                  Report &report) {
+void Grid::create_cubesphere_grid(Quadtree quadtree) {
 
   std::string function = "Grid::create_cubesphere_grid";
   static int iFunction = -1;
@@ -410,12 +406,17 @@ void Grid::create_cubesphere_grid(Quadtree quadtree,
   arma_mat g22_upper_left(nLons + 1, nLats);
   arma_mat sqrt_g_left(nLons + 1, nLats);
   fill_cubesphere_lat_lon_from_norms(quadtree, dr, du, ll, nGCs, 0.0, 0.5,
-                                     lat2d_left, lon2d_left, refx_left, refy_left);
+                                     lat2d_left, lon2d_left,
+				     refx_left, refy_left);
 
-  transformation_metrics(quadtree, lat2d_left, lon2d_left, refx_left, refy_left,
-                          A11_left, A12_left, A21_left, A22_left, A11_inv_left, 
-                          A12_inv_left, A21_inv_left, A22_inv_left, g11_upper_left, 
-                          g12_upper_left, g21_upper_left, g22_upper_left, sqrt_g_left);
+  transformation_metrics(quadtree,
+			 lat2d_left, lon2d_left, refx_left, refy_left,
+			 A11_left, A12_left, A21_left, A22_left,
+			 A11_inv_left, A12_inv_left,
+			 A21_inv_left, A22_inv_left,
+			 g11_upper_left, g12_upper_left,
+			 g21_upper_left, g22_upper_left,
+			 sqrt_g_left);
 
   for (iAlt = 0; iAlt < nAlts; iAlt++) {
     geoLon_Left.slice(iAlt) = lon2d_left;
@@ -459,12 +460,17 @@ void Grid::create_cubesphere_grid(Quadtree quadtree,
   arma_mat sqrt_g_down(nLons, nLats + 1);
 
   fill_cubesphere_lat_lon_from_norms(quadtree, dr, du, ll, nGCs, 0.5, 0.0,
-                                     lat2d_down, lon2d_down, refx_down, refy_down);
+                                     lat2d_down, lon2d_down,
+				     refx_down, refy_down);
                                      
-  transformation_metrics(quadtree, lat2d_down, lon2d_down, refx_down, refy_down,
-                          A11_down, A12_down, A21_down, A22_down, A11_inv_down, 
-                          A12_inv_down, A21_inv_down, A22_inv_down, g11_upper_down, 
-                          g12_upper_down, g21_upper_down, g22_upper_down, sqrt_g_down);
+  transformation_metrics(quadtree,
+			 lat2d_down, lon2d_down, refx_down, refy_down,
+			 A11_down, A12_down, A21_down, A22_down,
+			 A11_inv_down, A12_inv_down,
+			 A21_inv_down, A22_inv_down,
+			 g11_upper_down, g12_upper_down,
+			 g21_upper_down, g22_upper_down,
+			 sqrt_g_down);
                     
   for (iAlt = 0; iAlt < nAlts; iAlt++) {
     geoLon_Down.slice(iAlt) = lon2d_down;
@@ -494,7 +500,8 @@ void Grid::create_cubesphere_grid(Quadtree quadtree,
   arma_mat refx_corner(nLons + 1, nLats + 1);
   arma_mat refy_corner(nLons + 1, nLats + 1);
   fill_cubesphere_lat_lon_from_norms(quadtree, dr, du, ll, nGCs, 0.0, 0.0,
-                                     lat2d_corner, lon2d_corner, refx_corner, refy_corner);
+                                     lat2d_corner, lon2d_corner,
+				     refx_corner, refy_corner);
 
   for (iAlt = 0; iAlt < nAlts + 1; iAlt++) {
     geoLon_Corner.slice(iAlt) = lon2d_corner;
@@ -511,9 +518,7 @@ void Grid::create_cubesphere_grid(Quadtree quadtree,
 // Create connectivity between the nodes for message passing for sphere
 // ----------------------------------------------------------------------
 
-void Grid::create_sphere_connection(Quadtree quadtree,
-                                    Inputs input,
-                                    Report &report) {
+void Grid::create_sphere_connection(Quadtree quadtree) {
 
   std::string function = "Grid::create_sphere_connection";
   static int iFunction = -1;
@@ -601,9 +606,7 @@ void Grid::create_sphere_connection(Quadtree quadtree,
 // Create a spherical grid with lon/lat/alt coordinates
 // ----------------------------------------------------------------------
 
-void Grid::create_sphere_grid(Quadtree quadtree,
-                              Inputs input,
-                              Report &report) {
+void Grid::create_sphere_grid(Quadtree quadtree) {
 
   std::string function = "Grid::create_simple_lat_lon_alt_grid";
   static int iFunction = -1;
@@ -708,7 +711,7 @@ void Grid::create_sphere_grid(Quadtree quadtree,
 // Create a spherical grid with lon/lat/alt coordinates
 // ----------------------------------------------------------------------
 
-void Grid::create_altitudes(Planets planet, Inputs input, Report &report) {
+void Grid::create_altitudes(Planets planet) {
 
   std::string function = "Grid::create_altitudes";
   static int iFunction = -1;
@@ -852,7 +855,7 @@ void Grid::create_altitudes(Planets planet, Inputs input, Report &report) {
 // Assumes radius of planet and altitude are constant
 // ----------------------------------------------------------------------
 
-void Grid::correct_xy_grid(Planets planet, Report &report) {
+void Grid::correct_xy_grid(Planets planet) {
 
   std::string function = "Grid::correct_xy_grid";
   static int iFunction = -1;
@@ -936,9 +939,7 @@ void Grid::correct_xy_grid(Planets planet, Report &report) {
 // ----------------------------------------------------------------------
 
 bool Grid::init_geo_grid(Quadtree quadtree,
-                         Planets planet,
-                         Inputs input,
-                         Report &report) {
+                         Planets planet) {
 
   std::string function = "Grid::init_geo_grid";
   static int iFunction = -1;
@@ -950,41 +951,47 @@ bool Grid::init_geo_grid(Quadtree quadtree,
   IsCubeSphereGrid = input.get_is_cubesphere();
 
   if (input.get_is_cubesphere())
-    create_cubesphere_connection(quadtree, input, report);
+    create_cubesphere_connection(quadtree);
   else
-    create_sphere_connection(quadtree, input, report);
+    create_sphere_connection(quadtree);
 
   if (input.get_do_restart()) {
     report.print(1, "Restarting! Reading grid files!");
     DidWork = read_restart(input.get_restartin_dir());
   } else {
     if (input.get_is_cubesphere())
-      create_cubesphere_grid(quadtree, input, report);
+      create_cubesphere_grid(quadtree);
     else
-      create_sphere_grid(quadtree, input, report);
+      create_sphere_grid(quadtree);
 
     MPI_Barrier(aether_comm);
-    create_altitudes(planet, input, report);
+    create_altitudes(planet);
 
     DidWork = write_restart(input.get_restartout_dir());
   }
 
-  // Calculate the radius, etc:
-  fill_grid_radius(planet, report);
+  // Calculate the radius (for spherical or non-spherical)
+  fill_grid_radius(planet);
+  // Calculate grid spacing
+  calc_grid_spacing(planet);
+  //calculate radial unit vector (for spherical or oblate planet)
+  calc_rad_unit(planet);
+  // Calculate gravity (including J2 term, if desired)
+  calc_gravity(planet);
 
   // Calculate magnetic field and magnetic coordinates:
-  fill_grid_bfield(planet, input, report);
+  fill_grid_bfield(planet);
 
   // Correct the reference grid with correct length scale: 
   // (with R = actual radius)
   if (input.get_is_cubesphere()) {
-    correct_xy_grid(planet, report);
+    correct_xy_grid(planet);
   }
 
   // Throw a little message for students:
   report.student_checker_function_name(input.get_is_student(),
-                                       input.get_student_name(),
-                                       4, "");
+				       input.get_student_name(),
+				       4, "");
 
   report.exit(function);
   return DidWork;

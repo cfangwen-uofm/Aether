@@ -6,7 +6,14 @@
 	"dt" : 60.0,
 	"TimingPercent" : 1.0,
 	"iTimingDepth" : 5,
-	"iProc" : 0},
+	"iProc" : 0,
+        "iFunctionVerbose" : {
+            "Grid::create_altitudes": 0},	
+	"check_for_nans" : false,
+	"nan_test" : {
+            "insert" : false,
+            "variable" : "temperature_scgc"}
+    },
 
     "InitialConditions" : {
 	"type" : "Planet"},    
@@ -29,16 +36,26 @@
 	"HeatingEfficiency" : 0.05,
 	"dt" : 60.0},
 
+    "Sources": {
+	"Neutrals" : {
+	    "NO_cool" : false,
+	    "O_cool" : false } },
+    
     "DoCalcBulkIonTemp" : false,
+    
+    "Eddy" : {
+	"Coefficient" : 50.0,
+	"BottomPressure" : 0.01,
+	"TopPressure" : 0.005,
+	"UseInEnergy": true,
+	"UseInMomentum": true},
 
     "StartTime" : [2011, 3, 20, 0, 0, 0],
     "EndTime" : [2011, 3, 20, 0, 10, 0],
 
     "GeoBlockSize" : {
 	"nLons" : 36,
-	"nBlocksLon" : 1,
 	"nLats" : 36,
-	"nBlocksLat" : 1,
 	"nAlts" : 50},
 
     "GeoGrid" : {
@@ -54,18 +71,29 @@
     "CubeSphere" : {
 	"is" : false},
 
+    "Oblate" : {
+	"isOblate" : false,
+        "isJ2" : false},
+
     "Ensembles" : {
         "nMembers" : 1},
 
-    "Seed" : 0,
+    "Sources" : {
+	"Grid" : {
+	    "Cent_acc" : true },
+	"Neutrals" : {
+	    "NO_cool" : false,
+	    "O_cool": false } },
     
+    "Seed" : 0,
+
     "F107File" : "UA/inputs/f107.txt",
     "ChemistryFile" : "UA/inputs/chemistry_earth_richards.csv",
     "CollisionsFile" : "UA/inputs/ion_neutral_collision_frequencies.csv",
     "PlanetCharacteristicsFile" : "UA/inputs/orbits.csv",
     "AuroraFile" : "UA/inputs/aurora_earth.csv",
     "IndicesLookupFile" : "UA/inputs/indices_lookup.json",
-    
+
     "OnmiwebFile" : [""],
     "ElectrodynamicsFile" : [""],
     
