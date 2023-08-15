@@ -138,8 +138,8 @@ arma_vec calc_grad_1d(arma_vec &values,
 //   - values and x defined at centers
 // ---------------------------------------------------------
 
-arma_mat calc_grad(arma_mat values,
-                   arma_mat x,
+arma_mat calc_grad(arma_mat &values,
+                   arma_mat &x,
                    int64_t nGCs,
                    bool DoX)
 {
@@ -190,10 +190,10 @@ arma_mat calc_grad(arma_mat values,
 //     (between i-1 and i cell center)
 // ---------------------------------------------------------
 
-arma_mat project_from_left(arma_mat values,
-                           arma_mat gradients,
-                           arma_mat x_centers,
-                           arma_mat x_edges,
+arma_mat project_from_left(arma_mat &values,
+                           arma_mat &gradients,
+                           arma_mat &x_centers,
+                           arma_mat &x_edges,
                            int64_t nGCs)
 {
 
@@ -225,10 +225,10 @@ arma_mat project_from_left(arma_mat values,
 //     (between i-1 and i cell center)
 // ---------------------------------------------------------
 
-arma_mat project_from_right(arma_mat values,
-                            arma_mat gradients,
-                            arma_mat x_centers,
-                            arma_mat x_edges,
+arma_mat project_from_right(arma_mat &values,
+                            arma_mat &gradients,
+                            arma_mat &x_centers,
+                            arma_mat &x_edges,
                             int64_t nGCs)
 {
   int64_t nX = values.n_rows;
@@ -260,8 +260,8 @@ arma_mat project_from_right(arma_mat values,
 //   limited is returned at edges
 // ---------------------------------------------------------
 
-arma_vec limiter_value(arma_vec projected,
-                       arma_vec values,
+arma_vec limiter_value(arma_vec &projected,
+                       arma_vec &values,
                        int64_t nPts,
                        int64_t nGCs)
 {
@@ -326,7 +326,7 @@ projection_struct project_to_edges(arma_mat &values,
   return proj;
 }
 
-void Neutrals::solver_horizontal_cubesphere(Grid& grid, Times& time, Report& report) {
+void Neutrals::solver_horizontal_cubesphere(Grid &grid, Times &time, Report &report) {
     // Function Reporting
     std::string function = "Neutrals::solver_horizontal_cubesphere";
     static int iFunction = -1;
@@ -337,7 +337,7 @@ void Neutrals::solver_horizontal_cubesphere(Grid& grid, Times& time, Report& rep
     int64_t nYs = grid.get_nY();
     int64_t nGCs = grid.get_nGCs();
     int64_t nAlts = grid.get_nAlts();
-    int iAlt;
+    int iAlt, iSpec;
 
     // Time Discretization (TODO: change dt calculation method)
     precision_t dt = time.get_dt();
@@ -375,7 +375,7 @@ void Neutrals::solver_horizontal_cubesphere(Grid& grid, Times& time, Report& rep
 
         /* TEMP and ENERGY */
         // Generate total energy (rhoE) (TODO: Verify)
-        arma_mat rhoE = rho % (temperature_scgc.slice(iAlt) + 0.5*vel2);
+        arma_mat rhoE = rho % (temperature_scgc.slice(iAlt) % Cv_scgc.slice(iAlt) + 0.5*vel2);
 
         /** Advancing **/
         /* Initialize projection constructs and storages */
@@ -569,10 +569,14 @@ void Neutrals::solver_horizontal_cubesphere(Grid& grid, Times& time, Report& rep
         velocity_vcgc[1].slice(iAlt) = xVel%grid.A21_scgc.slice(iAlt) + yVel%grid.A22_scgc.slice(iAlt);
 
         // Bulk Temperature
-        temperature_scgc.slice(iAlt) = rhoE / rho - 0.5*vel2;
+        temperature_scgc.slice(iAlt) = (rhoE / rho - 0.5*vel2) / Cv_scgc.slice(iAlt);
 
         /* Update specie density */
-        
+        for (iSpec = 0; iSpec < nSpecies; iSpec++) {
+            species[iSpec].density_scgc.slice(iAlt) = rho % species[iSpec].concentration_scgc.slice(iAlt);
+            species[iSpec].velocity_vcgc[0].slice(iAlt) = velocity_vcgc[0].slice(iAlt);
+            species[iSpec].velocity_vcgc[1].slice(iAlt) = velocity_vcgc[1].slice(iAlt);
+        }
 
         report.exit(function);
         return;
