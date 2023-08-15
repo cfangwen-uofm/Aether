@@ -441,7 +441,14 @@ class Neutrals {
      \param time
      \param report
    **/
-  void solver_horizontal_cubesphere(Grid& grid, Times& time, Report& report);
+  void solver_horizontal_cubesphere(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Call the correct horizontal advection scheme
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+   **/
+  bool advect_horizontal(Grid& grid, Times& time);
 };
 
 #endif  // INCLUDE_NEUTRALS_H_

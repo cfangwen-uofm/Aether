@@ -138,8 +138,8 @@ arma_vec calc_grad_1d(arma_vec &values,
 //   - values and x defined at centers
 // ---------------------------------------------------------
 
-arma_mat calc_grad(arma_mat &values,
-                   arma_mat &x,
+arma_mat calc_grad(arma_mat values,
+                   arma_mat x,
                    int64_t nGCs,
                    bool DoX)
 {
@@ -190,10 +190,10 @@ arma_mat calc_grad(arma_mat &values,
 //     (between i-1 and i cell center)
 // ---------------------------------------------------------
 
-arma_mat project_from_left(arma_mat &values,
-                           arma_mat &gradients,
-                           arma_mat &x_centers,
-                           arma_mat &x_edges,
+arma_mat project_from_left(arma_mat values,
+                           arma_mat gradients,
+                           arma_mat x_centers,
+                           arma_mat x_edges,
                            int64_t nGCs)
 {
 
@@ -225,10 +225,10 @@ arma_mat project_from_left(arma_mat &values,
 //     (between i-1 and i cell center)
 // ---------------------------------------------------------
 
-arma_mat project_from_right(arma_mat &values,
-                            arma_mat &gradients,
-                            arma_mat &x_centers,
-                            arma_mat &x_edges,
+arma_mat project_from_right(arma_mat values,
+                            arma_mat gradients,
+                            arma_mat x_centers,
+                            arma_mat x_edges,
                             int64_t nGCs)
 {
   int64_t nX = values.n_rows;
@@ -260,8 +260,8 @@ arma_mat project_from_right(arma_mat &values,
 //   limited is returned at edges
 // ---------------------------------------------------------
 
-arma_vec limiter_value(arma_vec &projected,
-                       arma_vec &values,
+arma_vec limiter_value(arma_vec projected,
+                       arma_vec values,
                        int64_t nPts,
                        int64_t nGCs)
 {
@@ -326,7 +326,7 @@ projection_struct project_to_edges(arma_mat &values,
   return proj;
 }
 
-void Neutrals::solver_horizontal_cubesphere(Grid &grid, Times &time, Report &report) {
+void Neutrals::solver_horizontal_cubesphere(Grid& grid, Times& time) {
     // Function Reporting
     std::string function = "Neutrals::solver_horizontal_cubesphere";
     static int iFunction = -1;

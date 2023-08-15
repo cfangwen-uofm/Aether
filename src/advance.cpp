@@ -45,6 +45,8 @@ int advance(Planets &planet,
   neutrals.calc_kappa_eddy();
   time.calc_dt();
 
+  neutrals.advect_horizontal(gGrid, time);
+
   iErr = calc_euv(planet,
                   gGrid,
                   time,
