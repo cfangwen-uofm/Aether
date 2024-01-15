@@ -52,6 +52,8 @@ bool advance(Planets &planet,
   precision_t dtIon = 100.0;
   time.calc_dt(dtNeutral, dtIon);
 
+  neutrals.advect_horizontal(gGrid, time);
+
   // ------------------------------------
   // Do advection first :
 
