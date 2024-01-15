@@ -72,6 +72,7 @@ Neutrals::Neutrals(Grid grid,
                    Indices indices) {
 
   int iErr;
+  bool didWork = true;
   species_chars tmp;
 
   int64_t nLons = grid.get_nLons();
@@ -87,9 +88,9 @@ Neutrals::Neutrals(Grid grid,
     species.push_back(tmp);
   }
 
-  velocity_name.push_back("Zonal Wind");
-  velocity_name.push_back("Meridional Wind");
-  velocity_name.push_back("Vertical Wind");
+  velocity_name.push_back("velocity_east");
+  velocity_name.push_back("velocity_north");
+  velocity_name.push_back("velocity_up");
 
   // State variables:
 
@@ -141,13 +142,13 @@ Neutrals::Neutrals(Grid grid,
   iErr = read_planet_file(planet);
 
   if (iErr > 0)
-    std::cout << "Error reading planet file!" << '\n';
+    report.error("Error reading planet file!");
 
   // This specifies the initial conditions for the neutrals:
-  iErr = initial_conditions(grid, time, indices);
+  didWork = initial_conditions(grid, time, indices);
 
-  if (iErr > 0)
-    std::cout << "Error in setting neutral initial conditions!" << '\n';
+  if (!didWork)
+    report.error("Error in setting neutral initial conditions!");
 
   return;
 }
@@ -285,17 +286,31 @@ void Neutrals::nan_test(std::string variable) {
 //----------------------------------------------------------------------
 
 bool Neutrals::check_for_nonfinites() {
-  bool non_finites_exist = false;
+  bool isBad = false;
+  bool didWork = true;
 
-  if (!all_finite(density_scgc, "density_scgc") ||
-      !all_finite(temperature_scgc, "temperature_scgc") ||
-      !all_finite(velocity_vcgc, "velocity_vcgc"))
-    non_finites_exist = true;
+  isBad = !all_finite(density_scgc, "density_scgc");
 
-  if (non_finites_exist)
-    throw std::string("Check for nonfinites failed!!!\n");
+  if (isBad) {
+    report.error("non-finite found in neutral density!");
+    didWork = false;
+  }
 
-  return non_finites_exist;
+  isBad = !all_finite(temperature_scgc, "temperature_scgc");
+
+  if (isBad) {
+    report.error("non-finite found in neutral temperature!");
+    didWork = false;
+  }
+
+  isBad = !all_finite(velocity_vcgc, "velocity_vcgc");
+
+  if (isBad) {
+    report.error("non-finite found in neutral velocity!");
+    didWork = false;
+  }
+
+  return didWork;
 }
 
 //----------------------------------------------------------------------

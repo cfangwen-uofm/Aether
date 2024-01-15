@@ -328,8 +328,7 @@ void Neutrals::calc_cMax() {
 }
 
 // ----------------------------------------------------------------------
-// Calculate cMax, which is the sound speed + velocity in each
-// direction
+// Calculate dt primarily for the spherical grid
 // ----------------------------------------------------------------------
 
 precision_t Neutrals::calc_dt(Grid grid) {
@@ -338,40 +337,46 @@ precision_t Neutrals::calc_dt(Grid grid) {
   static int iFunction = -1;
   report.enter(function, iFunction);
 
-  int iDir;
+  precision_t dt;
 
-  arma_vec dta(4);
+  if (input.get_is_cubesphere())
+    dt = calc_dt_cubesphere(grid);
+  else {
+    int iDir;
 
-  // simply some things, and just take the bulk value for now:
-  arma_cube dtx = grid.dlon_center_dist_scgc / cMax_vcgc[0];
-  dta(0) = dtx.min();
+    arma_vec dta(4);
 
-  arma_cube dty = grid.dlat_center_dist_scgc / cMax_vcgc[1];
-  dta(1) = dty.min();
+    // simply some things, and just take the bulk value for now:
+    arma_cube dtx = grid.dlon_center_dist_scgc / cMax_vcgc[0];
+    dta(0) = dtx.min();
 
-  if (input.get_nAltsGeo() > 1) {
-    arma_cube dtz = grid.dalt_center_scgc / cMax_vcgc[2];
-    dta(2) = dtz.min();
-  } else
-    dta(2) = 1e32;
+    arma_cube dty = grid.dlat_center_dist_scgc / cMax_vcgc[1];
+    dta(1) = dty.min();
 
-  dta(3) = 10.0;
+    if (input.get_nAltsGeo() > 1) {
+      arma_cube dtz = grid.dalt_center_scgc / cMax_vcgc[2];
+      dta(2) = dtz.min();
+    } else
+      dta(2) = 1e32;
 
-  dt = dta.min();
+    dta(3) = 10.0;
 
-  // This is a stop gap for the cubesphere grid:
-  if (dt < 0.0)
-    dt = 2.0;
+    dt = dta.min();
 
-  if (report.test_verbose(3))
-    std::cout << "dt for neutrals : " << dt << "\n";
+    if (report.test_verbose(3))
+      std::cout << "dt (sphere) for neutrals : " << dt << "\n";
 
-  if (report.test_verbose(4))
-    std::cout << " derived from dt(x, y, z, extra) : " << dta << "\n";
+    if (report.test_verbose(4))
+      std::cout << " derived from dt(x, y, z, extra) : " << dta << "\n";
+  }
 
   report.exit(function);
   return dt;
 }
+
+// ----------------------------------------------------------------------
+// Calculate dt for the cubesphere grid.
+// ----------------------------------------------------------------------
 
 precision_t Neutrals::calc_dt_cubesphere(Grid grid) {
 
@@ -379,6 +384,7 @@ precision_t Neutrals::calc_dt_cubesphere(Grid grid) {
   static int iFunction = -1;
   report.enter(function, iFunction);
 
+  precision_t dt;
   int iDir;
 
   arma_vec dta(4);
@@ -387,7 +393,7 @@ precision_t Neutrals::calc_dt_cubesphere(Grid grid) {
   int64_t nAlts = grid.get_nAlts();
   int64_t nXs = grid.get_nLons();
   int64_t nYs = grid.get_nLats();
-  
+
   // dtx dty for reference coordinate system
   arma_cube dtx(size(cMax_vcgc[0]));
   arma_cube dty(size(cMax_vcgc[0]));
@@ -398,11 +404,18 @@ precision_t Neutrals::calc_dt_cubesphere(Grid grid) {
   // Loop through altitudes
   for (int iAlt = 0; iAlt < nAlts; iAlt++) {
     // Conver cMax to contravariant velocity first
-    arma_mat u1 = cMax_vcgc[0].slice(iAlt) % grid.A11_inv_scgc.slice(iAlt) + cMax_vcgc[1].slice(iAlt) % grid.A12_inv_scgc.slice(iAlt);
-    arma_mat u2 = cMax_vcgc[0].slice(iAlt) % grid.A21_inv_scgc.slice(iAlt) + cMax_vcgc[1].slice(iAlt) % grid.A22_inv_scgc.slice(iAlt);
-
-    dtx.slice(iAlt) = grid.drefx(iAlt)*dummy_1 / u1; 
-    dty.slice(iAlt) = grid.drefy(iAlt)*dummy_1 / u2; 
+    arma_mat u1 = sqrt(
+                    cMax_vcgc[0].slice(iAlt) % grid.A11_inv_scgc.slice(iAlt) %
+                    cMax_vcgc[0].slice(iAlt) % grid.A11_inv_scgc.slice(iAlt) +
+                    cMax_vcgc[1].slice(iAlt) % grid.A12_inv_scgc.slice(iAlt) %
+                    cMax_vcgc[1].slice(iAlt) % grid.A12_inv_scgc.slice(iAlt));
+    arma_mat u2 = sqrt(
+                    cMax_vcgc[0].slice(iAlt) % grid.A21_inv_scgc.slice(iAlt) %
+                    cMax_vcgc[0].slice(iAlt) % grid.A21_inv_scgc.slice(iAlt) +
+                    cMax_vcgc[1].slice(iAlt) % grid.A22_inv_scgc.slice(iAlt) %
+                    cMax_vcgc[1].slice(iAlt) % grid.A22_inv_scgc.slice(iAlt));
+    dtx.slice(iAlt) = grid.drefx(iAlt) * dummy_1 / u1;
+    dty.slice(iAlt) = grid.drefy(iAlt) * dummy_1 / u2;
   }
 
   // simply some things, and just take the bulk value for now:
@@ -420,7 +433,7 @@ precision_t Neutrals::calc_dt_cubesphere(Grid grid) {
   dt = dta.min();
 
   if (report.test_verbose(3))
-    std::cout << "dt for neutrals : " << dt << "\n";
+    std::cout << "dt (cubesphere) for neutrals : " << dt << "\n";
 
   if (report.test_verbose(4))
     std::cout << " derived from dt(x, y, z, extra) : " << dta << "\n";

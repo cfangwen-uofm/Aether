@@ -4,7 +4,6 @@
 // #include <netcdf>
 
 #include "aether.h"
-//#include "output.cpp"
 
 /* ---------------------------------------------------------------------
 
@@ -20,11 +19,11 @@
 //  Fills output containers and outputs them for common output types
 // -----------------------------------------------------------------------------
 
-int output(const Neutrals &neutrals,
-           const Ions &ions,
-           const Grid &grid,
-           Times time,
-           const Planets &planet) {
+bool output(const Neutrals &neutrals,
+            const Ions &ions,
+            const Grid &grid,
+            Times time,
+            const Planets &planet) {
 
   std::string function = "output";
   static int iFunction = -1;
@@ -32,7 +31,7 @@ int output(const Neutrals &neutrals,
 
   static bool IsFirstTime = true;
 
-  int iErr = 0;
+  bool didWork = true;
 
   int nOutputs = input.get_n_outputs();
   static std::vector<OutputContainer> AllOutputContainers;
@@ -113,7 +112,7 @@ int output(const Neutrals &neutrals,
           type_output == "states")
         for (int iSpecies = 0; iSpecies < neutrals.nSpecies; iSpecies++)
           AllOutputContainers[iOutput].
-          store_variable(neutrals.species[iSpecies].cName,
+          store_variable("density_" + neutrals.species[iSpecies].cName,
                          neutrals.density_unit,
                          neutrals.species[iSpecies].density_scgc);
 
@@ -121,7 +120,7 @@ int output(const Neutrals &neutrals,
       if (type_output == "neutrals" ||
           type_output == "states")
         AllOutputContainers[iOutput].
-        store_variable(neutrals.temperature_name,
+        store_variable(neutrals.temperature_name + "_neutral",
                        neutrals.temperature_unit,
                        neutrals.temperature_scgc);
 
@@ -130,7 +129,7 @@ int output(const Neutrals &neutrals,
           type_output == "states")
         for (int iDir = 0; iDir < 3; iDir++)
           AllOutputContainers[iOutput].
-          store_variable(neutrals.velocity_name[iDir],
+          store_variable(neutrals.velocity_name[iDir] + "_neutral",
                          neutrals.velocity_unit,
                          neutrals.velocity_vcgc[iDir]);
 
@@ -139,8 +138,8 @@ int output(const Neutrals &neutrals,
         for (int iSpecies = 0; iSpecies < neutrals.nSpecies; iSpecies++)
           for (int iDir = 0; iDir < 3; iDir++)
             AllOutputContainers[iOutput].
-            store_variable(neutrals.species[iSpecies].cName + " " +
-                           neutrals.velocity_name[iDir],
+            store_variable(neutrals.velocity_name[iDir] + "_" +
+                           neutrals.species[iSpecies].cName,
                            neutrals.velocity_unit,
                            neutrals.species[iSpecies].velocity_vcgc[iDir]);
 
@@ -149,7 +148,7 @@ int output(const Neutrals &neutrals,
           type_output == "states")
         for (int iSpecies = 0; iSpecies <= ions.nSpecies; iSpecies++)
           AllOutputContainers[iOutput].
-          store_variable(ions.species[iSpecies].cName,
+          store_variable("density_" + ions.species[iSpecies].cName,
                          ions.density_unit,
                          ions.species[iSpecies].density_scgc);
 
@@ -158,23 +157,22 @@ int output(const Neutrals &neutrals,
           type_output == "states")
         for (int iSpecies = 0; iSpecies <= ions.nSpecies; iSpecies++)
           AllOutputContainers[iOutput].
-          store_variable(ions.species[iSpecies].cName + " " + ions.temperature_name,
+          store_variable(ions.temperature_name + "_" +
+                         ions.species[iSpecies].cName,
                          ions.temperature_unit,
                          ions.species[iSpecies].temperature_scgc);
 
       // Bulk Ion Temperature:
       if (type_output == "ions" ||
           type_output == "states")
-        AllOutputContainers[iOutput].store_variable("Bulk Ion " +
-                                                    ions.temperature_name,
+        AllOutputContainers[iOutput].store_variable(ions.temperature_name + "_ion",
                                                     ions.temperature_unit,
                                                     ions.temperature_scgc);
 
       // Bulk Ion Drifts:
       if (type_output == "states")
         for (int iDir = 0; iDir < 3; iDir++)
-          AllOutputContainers[iOutput].store_variable("Bulk " +
-                                                      ions.velocity_name[iDir],
+          AllOutputContainers[iOutput].store_variable(ions.velocity_name[iDir] + "_ion",
                                                       ions.velocity_unit,
                                                       ions.velocity_vcgc[iDir]);
 
@@ -252,15 +250,15 @@ int output(const Neutrals &neutrals,
       }
 
       if (type_output == "moment") {
-        AllOutputContainers[iOutput].store_variable("Cent Acc East",
+        AllOutputContainers[iOutput].store_variable("accel_cent_east",
                                                     "Logitudinal Centripetal Acceleration",
                                                     "m/s^2",
                                                     grid.cent_acc_vcgc[0]);
-        AllOutputContainers[iOutput].store_variable("Cent Acc North",
+        AllOutputContainers[iOutput].store_variable("accel_cent_north",
                                                     "Latitudinal Centripetal Acceleration",
                                                     "m/s^2",
                                                     grid.cent_acc_vcgc[1]);
-        AllOutputContainers[iOutput].store_variable("Cent Acc Vert",
+        AllOutputContainers[iOutput].store_variable("accel_cent_up",
                                                     "Radial Centripetal Acceleration",
                                                     "m/s^2",
                                                     grid.cent_acc_vcgc[2]);
@@ -311,7 +309,10 @@ int output(const Neutrals &neutrals,
       // ------------------------------------------------------------
       // write output container
 
-      AllOutputContainers[iOutput].write();
+      if (!AllOutputContainers[iOutput].write()) {
+        report.error("Error in writing output container!");
+        didWork = false;
+      }
 
       // ------------------------------------------------------------
       // Clear variables for next time
@@ -321,7 +322,7 @@ int output(const Neutrals &neutrals,
   }
 
   report.exit(function);
-  return iErr;
+  return didWork;
 }
 
 /* ---------------------------------------------------------------------
@@ -509,19 +510,21 @@ OutputContainer::OutputContainer() {
 // the user wants, and then output that particular type.
 // -----------------------------------------------------------------------------
 
-void OutputContainer::write() {
+bool OutputContainer::write() {
 
-  int iErr = 0;
+  bool didWork = true;
 
   if (output_type == binary_type) {
-    iErr = write_container_header();
+    didWork = write_container_header();
 
-    if (iErr == 0)
-      iErr = write_container_binary();
+    if (didWork)
+      didWork = write_container_binary();
   }
 
   if (output_type == netcdf_type)
-    iErr = write_container_netcdf();
+    didWork = write_container_netcdf();
+
+  return didWork;
 }
 
 // -----------------------------------------------------------------------------
@@ -558,9 +561,9 @@ void OutputContainer::display() {
 // formatted file.
 // -----------------------------------------------------------------------------
 
-int OutputContainer::write_container_header() {
+bool OutputContainer::write_container_header() {
 
-  int iErr = 0;
+  bool didWork = true;
   int64_t nVars = elements.size();
   int64_t nX = elements[0].value.n_rows;
   int64_t nY = elements[0].value.n_cols;
@@ -592,12 +595,11 @@ int OutputContainer::write_container_header() {
     file << header.dump(4) << "\n";
     file.close();
   } catch (...) {
-    std::cout << "Error writing header file : "
-              << whole_filename << "\n";
-    iErr = 1;
+    report.error("Error writing header file : " + whole_filename);
+    didWork = false;
   }
 
-  return iErr;
+  return didWork;
 }
 
 //----------------------------------------------------------------------
@@ -643,9 +645,9 @@ void output_binary_3d(std::ofstream &binary,
 // dump the contents of the container out into a binary file
 // -----------------------------------------------------------------------------
 
-int OutputContainer::write_container_binary() {
+bool OutputContainer::write_container_binary() {
 
-  int iErr = 0;
+  bool didWork = true;
   std::ofstream binary;
   std::string whole_filename = directory + "/" + filename + ".bin";
 
@@ -657,14 +659,13 @@ int OutputContainer::write_container_binary() {
     for (int64_t iVar = 0; iVar < nVars; iVar++)
       output_binary_3d(binary, elements[iVar].value);
 
-    return iErr;
+    return didWork;
   } catch (...) {
-    std::cout << "Error writing header file : "
-              << whole_filename << "\n";
-    iErr = 1;
+    report.error("Error writing binary file : " + whole_filename);
+    didWork = false;
   }
 
-  return iErr;
+  return didWork;
 }
 
 // -----------------------------------------------------------------------------
