@@ -8,9 +8,7 @@
 	"check_for_nans" : false
     },
 
-    "Planet" : {
-        "name" : "acheron",
-        "file": "UA/inputs/acheron.in"},
+    "PlanetFile" : "UA/inputs/acheron.in",
 
     "Logfile" : {
 	"species" : ["O", "O+"]},
