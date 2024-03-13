@@ -28,6 +28,7 @@ bool Inputs::read_inputs_json(Times &time) {
 
   // Set the default values first:
   settings = read_json("UA/inputs/defaults.json");
+
   isOk = set_verbose(settings);
 
   try {
@@ -40,6 +41,7 @@ bool Inputs::read_inputs_json(Times &time) {
     //   - Here we merge the restart inputs with the defaults inputs
     //   - This is BEFORE the user inputs are merged!!!
 
+    report.print(2, "Checking for restart");
     if (user_inputs.contains("Restart")) {
       if (user_inputs["Restart"].contains("do")) {
         if (user_inputs["Restart"]["do"]) {
@@ -57,9 +59,11 @@ bool Inputs::read_inputs_json(Times &time) {
 
     // Merge the defaults/restart settings with the user provided
     // settings, with the default/restart settings being the default:
+    report.print(2, "Merging inputs");
     settings.merge_patch(user_inputs);
 
     //change planet file to the one specified on aether.json:
+
     if (isOk)
       settings["PlanetSpeciesFile"] = get_setting_str("PlanetFile");
 
@@ -96,6 +100,7 @@ bool Inputs::read_inputs_json(Times &time) {
       time.set_end_time(get_setting_timearr("EndTime"));
 
   } catch (...) {
+
     report.error("Error in reading inputs!");
     isOk = false;
   }

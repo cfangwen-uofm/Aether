@@ -120,7 +120,6 @@ int main() {
 
     // Initialize ion temperatures from neutral temperature
     ions.init_ion_temperature(neutrals, gGrid);
-
     // Initialize electrodynamics and check if electrodynamics times
     // works with input time
     Electrodynamics electrodynamics(time);

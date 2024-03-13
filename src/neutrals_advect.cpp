@@ -33,3 +33,28 @@ bool Neutrals::advect_vertical(Grid grid, Times time) {
   return didWork;
 }
 
+bool Neutrals::advect_horizontal(Grid & grid, Times & time) {
+  bool didWork = true;
+
+  std::string function = "Neutrals::advance_horizontal";
+  static int iFunction = -1;
+  report.enter(function, iFunction);
+
+  solver_horizontal_cubesphere(grid, time);
+
+  report.exit(function);
+  return didWork;
+}
+
+bool Neutrals::advect_horizontal_advection(Grid & grid, Times & time) {
+  bool didWork = true;
+
+  std::string function = "Neutrals::advance_horizontal_advection";
+  static int iFunction = -1;
+  report.enter(function, iFunction);
+
+  solver_horizontal_cubesphere_advection(grid, time);
+
+  report.exit(function);
+  return didWork;
+}

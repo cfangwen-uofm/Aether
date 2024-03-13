@@ -611,17 +611,17 @@ bool Neutrals::exchange(Grid &grid) {
   }
 
   // Exchange temperature
-  grid.exchange(temperature_scgc, false);
+  //grid.exchange(temperature_scgc, false);
   // Fix corners:
-  fill_corners(temperature_scgc, nGCs);
+  //fill_corners(temperature_scgc, nGCs);
 
   // Exchange velocity
-  grid.exchange(velocity_vcgc[0], true);
-  grid.exchange(velocity_vcgc[1], true);
-  grid.exchange(velocity_vcgc[2], false);
+  //grid.exchange(velocity_vcgc[0], true);
+  //grid.exchange(velocity_vcgc[1], true);
+  //grid.exchange(velocity_vcgc[2], false);
 
   for (int iDir = 0; iDir < 3; iDir++)
-    fill_corners(velocity_vcgc[iDir], nGCs);
+    //fill_corners(velocity_vcgc[iDir], nGCs);
 
   return true;
 }

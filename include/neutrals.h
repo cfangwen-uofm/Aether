@@ -487,8 +487,52 @@ class Neutrals {
    **/
 
   bool advect_vertical(Grid grid, Times time);
-  
+
+  /**********************************************************************
+     \brief Solves for fluid motion (energy and pressure based) horizontally on the CubeSphere
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_cubesphere(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Call the correct horizontal advection scheme with CE eqn
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+   **/
+  bool advect_horizontal(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Solves for fluid motion (pure advect) horizontally on the CubeSphere
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_cubesphere_advection(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Call the horizontal advection scheme with only advection
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+   **/
+  bool advect_horizontal_advection(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Setup initial condition for the cosine bell test
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+     \param indices used to help set initial conditions
+     \param planet planet data for extracting the radius
+   **/
+  bool cosine_bell_ic(Grid grid,
+                      Times time,
+                      Indices indices, 
+                      Planets planet);
 };
+
 
 #endif  // INCLUDE_NEUTRALS_H_
 
