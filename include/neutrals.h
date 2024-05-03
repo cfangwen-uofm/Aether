@@ -489,21 +489,132 @@ class Neutrals {
   bool advect_vertical(Grid grid, Times time);
 
   /**********************************************************************
-     \brief Solves for fluid motion horizontally on the CubeSphere
+     \brief Residuals for **fluid motion** horizontally with Rusanov
+     \brief It actually updates the weighted residuals (-1/Area*R) for efficiency
+
+     \param grid
+     \param time
+     \param states
+   **/
+  std::vector<arma_mat> residual_horizontal_rusanov(std::vector<arma_mat>& states, Grid& grid, Times& time, int64_t iAlt);
+
+  /**********************************************************************
+     \brief Solves for **fluid motion** horizontally with RK4
 
      \param grid
      \param time
      \param report
    **/
-  void solver_horizontal_cubesphere(Grid& grid, Times& time);
+  void solver_horizontal_RK4(Grid& grid, Times& time);
 
   /**********************************************************************
-     \brief Call the correct horizontal advection scheme
+     \brief Solves for **fluid motion** horizontally with RK1
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_RK1(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Call the correct horizontal advection scheme with CE eqn
      \param grid The grid to define the neutrals on
      \param time contains information about the current time
    **/
   bool advect_horizontal(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Solves for fluid motion (pure advect) horizontally with Rusanov
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_rusanov_advection(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Solves for fluid motion (pure advect) horizontally with RK1
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_RK1_advection(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Solves for fluid motion (pure advect) horizontally with RK2
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_RK2_advection(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Solves for fluid motion (pure advect) horizontally with RK4
+
+     \param grid
+     \param time
+     \param report
+   **/
+  void solver_horizontal_RK4_advection(Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Residuals for fluid motion (pure advect) horizontally with HLLE
+     \brief It actually updates the weighted residuals (-1/Area*R) for efficiency
+
+     \param grid
+     \param time
+     \param states
+   **/
+  std::vector<arma_mat> residual_horizontal_hlle_advection(std::vector<arma_mat>& states, Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Residuals for fluid motion (pure advect) horizontally with Rusanov
+     \brief It actually updates the weighted residuals (-1/Area*R) for efficiency
+
+     \param grid
+     \param time
+     \param states
+   **/
+  std::vector<arma_mat> residual_horizontal_rusanov_advection(std::vector<arma_mat>& states, Grid& grid, Times& time);
+
+  /**********************************************************************
+     \brief Call the horizontal advection scheme with only advection
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+   **/
+  bool advect_horizontal_advection(Grid& grid, Times& time);
+
+
+
+  /**********************************************************************
+     \brief Setup initial condition for the cosine bell test
+     \brief For advection test
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+     \param indices used to help set initial conditions
+     \param planet planet data for extracting the radius
+   **/
+  bool cosine_bell_ic(Grid grid,
+                      Times time,
+                      Indices indices, 
+                      Planets planet);
+
+  /**********************************************************************
+     \brief Setup initial condition for the blob test
+     \brief For Actual Cubesphere fluid solver
+     \param grid The grid to define the neutrals on
+     \param time contains information about the current time
+     \param indices used to help set initial conditions
+     \param planet planet data for extracting the radius
+   **/
+  bool blob_ic(Grid grid,
+                      Times time,
+                      Indices indices, 
+                      Planets planet);
 };
+
 
 #endif  // INCLUDE_NEUTRALS_H_
 

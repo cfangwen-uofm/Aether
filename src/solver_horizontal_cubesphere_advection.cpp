@@ -899,7 +899,7 @@ void Neutrals::solver_horizontal_RK4_advection(Grid& grid, Times& time) {
         // Pass in state vector
         std::vector<arma_mat> state_0;
         state_0.push_back(rho_0); state_0.push_back(xVel); state_0.push_back(yVel);
-        std::vector<arma_mat> f_0_vec = residual_horizontal_hlle_advection(state_0, grid, time);
+        std::vector<arma_mat> f_0_vec = residual_horizontal_rusanov_advection(state_0, grid, time);
         // Extract Gradients
         arma_mat f_0_eq1 = f_0_vec[0];
 
@@ -917,7 +917,7 @@ void Neutrals::solver_horizontal_RK4_advection(Grid& grid, Times& time) {
         // Pass in state vector
         std::vector<arma_mat> state_1;
         state_1.push_back(rho_1); state_1.push_back(xVel); state_1.push_back(yVel);
-        std::vector<arma_mat> f_1_vec = residual_horizontal_hlle_advection(state_1, grid, time);
+        std::vector<arma_mat> f_1_vec = residual_horizontal_rusanov_advection(state_1, grid, time);
         // Extract Gradients
         arma_mat f_1_eq1 = f_1_vec[0];
 
@@ -935,7 +935,7 @@ void Neutrals::solver_horizontal_RK4_advection(Grid& grid, Times& time) {
         // Pass in state vector
         std::vector<arma_mat> state_2;
         state_2.push_back(rho_2); state_2.push_back(xVel); state_2.push_back(yVel);
-        std::vector<arma_mat> f_2_vec = residual_horizontal_hlle_advection(state_2, grid, time);
+        std::vector<arma_mat> f_2_vec = residual_horizontal_rusanov_advection(state_2, grid, time);
         // Extract Gradients
         arma_mat f_2_eq1 = f_2_vec[0];
 
@@ -953,7 +953,7 @@ void Neutrals::solver_horizontal_RK4_advection(Grid& grid, Times& time) {
         // Pass in state vector
         std::vector<arma_mat> state_3;
         state_3.push_back(rho_3); state_3.push_back(xVel); state_3.push_back(yVel);
-        std::vector<arma_mat> f_3_vec = residual_horizontal_hlle_advection(state_3, grid, time);
+        std::vector<arma_mat> f_3_vec = residual_horizontal_rusanov_advection(state_3, grid, time);
         // Extract Gradients
         arma_mat f_3_eq1 = f_3_vec[0];
 

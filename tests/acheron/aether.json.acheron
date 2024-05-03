@@ -8,7 +8,7 @@
 	"check_for_nans" : false
     },
 
-    "PlanetFile" : "UA/inputs/acheron.in",
+    "PlanetFile" : "UA/inputs/acheron_advection.in",
 
     "Logfile" : {
 	"species" : ["O", "O+"]},
@@ -23,15 +23,16 @@
     "Ensembles" : {
 	"nMembers" : 1},
 
-    "EndTime" : [2011, 3, 20, 0, 10, 0],
+    "EndTime" : [2011, 3, 20, 12, 0, 0],
 
     "CubeSphere" : {
 	"is" : true},
 
     "GeoBlockSize" : {
-	"nLons" : 36,
-	"nLats" : 36,
-	"nAlts" : 1},
+	"nLons" : 128,
+	"nLats" : 128,
+	"nAlts" : 1
+    },
 
     "GeoGrid" : {
 	"MinAlt" : 1000.0,
@@ -44,7 +45,7 @@
     
     "Outputs" : {
 	"type" : ["states"],
-	"dt" : [900] },
+	"dt" : [3600] },
     
     "DoCalcBulkIonTemp" : false
     

@@ -12,7 +12,6 @@ mpirun -np 6 ./aether
 
 # post process and plot:
 cd UA/output
-~/bin/postAether.py -rm
+python3 ../../../postAether.py -rm
 # not sure where plotting code is located....
-~/bin/run_plot_block_model_results.py 3DALL_20110320_*.nc -var="Temperature" -alt=2
-
+#/home/ridley/bin/run_plot_model_results.py 3DALL_20110320_*.nc -var="Temperature" -alt=2

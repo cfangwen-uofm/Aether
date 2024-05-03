@@ -40,18 +40,19 @@ bool advance(Planets &planet,
 
   gGrid.calc_sza(planet, time);
   neutrals.calc_mass_density();
-  neutrals.calc_mean_major_mass();
-  neutrals.calc_specific_heat();
+  //neutrals.calc_mean_major_mass();
+  //neutrals.calc_specific_heat();
   neutrals.calc_concentration();
-  neutrals.calc_pressure();
-  neutrals.calc_bulk_velocity();
-  neutrals.calc_kappa_eddy();
+  //neutrals.calc_pressure();
+  //neutrals.calc_bulk_velocity();
+  //neutrals.calc_kappa_eddy();
   neutrals.calc_cMax();
 
   precision_t dtNeutral = neutrals.calc_dt(gGrid);
   precision_t dtIon = 100.0;
   time.calc_dt(dtNeutral, dtIon);
 
+  //neutrals.advect_horizontal_advection(gGrid, time);
   neutrals.advect_horizontal(gGrid, time);
 
   // ------------------------------------
@@ -60,13 +61,13 @@ bool advance(Planets &planet,
   // Upper BCs requires the scale height to be calculated, so do that
   // first
 
-  neutrals.calc_scale_height(gGrid);
+  //neutrals.calc_scale_height(gGrid);
 
-  if (didWork)
-    didWork = neutrals.set_bcs(gGrid, time, indices);
+  //if (didWork)
+  //  didWork = neutrals.set_bcs(gGrid, time, indices);
 
-  if (input.get_nAltsGeo() > 1)
-    neutrals.advect_vertical(gGrid, time);
+  //if (input.get_nAltsGeo() > 1)
+    //neutrals.advect_vertical(gGrid, time);
 
   if (didWork & input.get_check_for_nans())
     didWork = neutrals.check_for_nonfinites();
@@ -75,50 +76,51 @@ bool advance(Planets &planet,
   // ------------------------------------
   // Calculate source terms next:
 
-  if (didWork)
-    didWork = calc_euv(planet,
-                       gGrid,
-                       time,
-                       euv,
-                       neutrals,
-                       ions,
-                       indices);
+  //if (didWork)
+    //didWork = calc_euv(planet,
+    //                   gGrid,
+    //                   time,
+    //                   euv,
+    //                   neutrals,
+    //                   ions,
+    //                   indices);
 
-  if (didWork)
-    didWork = electrodynamics.update(planet,
-                                     gGrid,
-                                     time,
-                                     indices,
-                                     ions);
+  //if (didWork)
+    //didWork = electrodynamics.update(planet,
+    //                                 gGrid,
+    //                                 time,
+    //                                 indices,
+    //                                 ions);
 
 
   if (didWork) {
-    calc_ion_neutral_coll_freq(neutrals, ions);
-    ions.calc_ion_drift(neutrals, gGrid, time.get_dt());
+    //calc_ion_neutral_coll_freq(neutrals, ions);
+    //ions.calc_ion_drift(neutrals, gGrid, time.get_dt());
 
-    calc_aurora(gGrid, neutrals, ions);
+    //calc_aurora(gGrid, neutrals, ions);
 
     // Calculate some neutral source terms:
-    neutrals.calc_conduction(gGrid, time);
-    chemistry.calc_chemistry(neutrals, ions, time, gGrid);
+    //neutrals.calc_conduction(gGrid, time);
+    //chemistry.calc_chemistry(neutrals, ions, time, gGrid);
 
-    if (input.get_O_cooling())
-      neutrals.calc_O_cool();
+    //if (input.get_O_cooling())
+    //  neutrals.calc_O_cool();
 
-    if (input.get_NO_cooling())
-      neutrals.calc_NO_cool();
+    //if (input.get_NO_cooling())
+    //  neutrals.calc_NO_cool();
 
-    neutrals.vertical_momentum_eddy(gGrid);
-    calc_ion_collisions(neutrals, ions);
-    calc_neutral_friction(neutrals);
+    //neutrals.vertical_momentum_eddy(gGrid);
+    //calc_ion_collisions(neutrals, ions);
+    //calc_neutral_friction(neutrals);
 
-    neutrals.add_sources(time);
+    //neutrals.add_sources(time);
 
-    ions.calc_ion_temperature(neutrals, gGrid, time);
-    ions.calc_electron_temperature(neutrals, gGrid);
+    //ions.calc_ion_temperature(neutrals, gGrid, time);
+    //ions.calc_electron_temperature(neutrals, gGrid);
 
     if (input.get_is_cubesphere())
-      neutrals.exchange(gGrid);
+      //neutrals.exchange(gGrid);
+      neutrals.exchange_old(gGrid);
     else
       neutrals.exchange_old(gGrid);
 
@@ -143,6 +145,10 @@ bool advance(Planets &planet,
 
   if (!didWork)
     report.error("Error in Advance!");
+
+  //std::cout << neutrals.species[0].density_scgc(10, 10, 2) << std::endl;
+
+  //std::cout << "exchanged advance" << neutrals.species[0].density_scgc(10, 10, 2) << std::endl;
 
   report.exit(function);
   return didWork;

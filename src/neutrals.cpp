@@ -145,7 +145,11 @@ Neutrals::Neutrals(Grid grid,
     report.error("Error reading planet file!");
 
   // This specifies the initial conditions for the neutrals:
-  didWork = initial_conditions(grid, time, indices);
+  //didWork = initial_conditions(grid, time, indices);
+
+  // This specifies the initial conditions for the neutrals (cosine bell test):
+  //didWork = cosine_bell_ic(grid, time, indices, planet);
+  didWork = blob_ic(grid, time, indices, planet);
 
   if (!didWork)
     report.error("Error in setting neutral initial conditions!");

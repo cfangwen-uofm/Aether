@@ -135,6 +135,7 @@ void fill_cubesphere_lat_lon_from_norms(Quadtree quadtree,
       lat2d(iLR, iDU) = latp;
       lon2d(iLR, iDU) = lonp;
 
+      // refx and refy are the X, Y coordinates on the side of the CUBE
       // Identify sides, then apply correct transformation law
       // Face 1 to 4, equator faces with face 1 starting at the meridian
       // Face 5, North Pole (different from book def)
@@ -189,13 +190,16 @@ void transformation_metrics(Quadtree quadtree,
                             arma_mat &g12_upper,
                             arma_mat &g21_upper,
                             arma_mat &g22_upper,
-                            arma_mat &sqrt_g) {
+                            arma_mat &sqrt_g,
+                            arma_mat &refx_angle,
+                            arma_mat &refy_angle) {
+
   int64_t nX = lat2d.n_rows;
   int64_t nY = lat2d.n_cols;
   // Assume R = 1 (since lat-lon/ xy generation assumes unit vect)
   double R = 1;
   double a = R / sqrt(3);
-  double xref, yref, rref;
+  double xref, yref, rref, xy;
   double latp, lonp;
   double g;
 
@@ -204,7 +208,12 @@ void transformation_metrics(Quadtree quadtree,
     for (int i = 0; i < nX; i++) {
       xref = refx(i, j);
       yref = refy(i, j);
+      xy = std::sqrt(xref * xref + yref * yref);
       rref = std::sqrt(xref * xref + yref * yref + a * a);
+
+      // Want to calculate angles based on x, y, z
+      refx_angle(i, j) = asin(xref / rref);
+      refy_angle(i, j) = asin(yref / rref);
 
       latp = lat2d(i, j);
       lonp = lon2d(i, j);
@@ -358,15 +367,21 @@ void Grid::create_cubesphere_grid(Quadtree quadtree) {
   arma_mat g21_upper(nLons, nLats);
   arma_mat g22_upper(nLons, nLats);
   arma_mat sqrt_g(nLons, nLats);
+  arma_mat refx_angle_temp(nLons, nLats);
+  arma_mat refy_angle_temp(nLons, nLats);
   fill_cubesphere_lat_lon_from_norms(quadtree, dr, du, ll, nGCs, 0.5, 0.5,
                                      lat2d, lon2d, refx, refy);
 
   transformation_metrics(quadtree, lat2d, lon2d, refx, refy,
                          A11, A12, A21, A22, A11_inv, A12_inv,
                          A21_inv, A22_inv, g11_upper, g12_upper,
-                         g21_upper, g22_upper, sqrt_g);
+                         g21_upper, g22_upper, sqrt_g,
+                         refx_angle_temp, refy_angle_temp);
 
   for (iAlt = 0; iAlt < nAlts; iAlt++) {
+    refx_angle.slice(iAlt) = refx_angle_temp;
+    refy_angle.slice(iAlt) = refy_angle_temp;
+
     geoLon_scgc.slice(iAlt) = lon2d;
     geoLat_scgc.slice(iAlt) = lat2d;
     refx_scgc.slice(iAlt) = refx;
@@ -406,6 +421,8 @@ void Grid::create_cubesphere_grid(Quadtree quadtree) {
   arma_mat g21_upper_left(nLons + 1, nLats);
   arma_mat g22_upper_left(nLons + 1, nLats);
   arma_mat sqrt_g_left(nLons + 1, nLats);
+  arma_mat refx_angle_left_temp(nLons + 1, nLats);
+  arma_mat refy_angle_left_temp(nLons + 1, nLats);
   fill_cubesphere_lat_lon_from_norms(quadtree, dr, du, ll, nGCs, 0.0, 0.5,
                                      lat2d_left, lon2d_left,
                                      refx_left, refy_left);
@@ -417,7 +434,11 @@ void Grid::create_cubesphere_grid(Quadtree quadtree) {
                          A21_inv_left, A22_inv_left,
                          g11_upper_left, g12_upper_left,
                          g21_upper_left, g22_upper_left,
-                         sqrt_g_left);
+                         sqrt_g_left,
+                         refx_angle_left_temp, refy_angle_left_temp);
+
+  refx_angle_Left = refx_angle_left_temp;
+  refy_angle_Left = refy_angle_left_temp;
 
   for (iAlt = 0; iAlt < nAlts; iAlt++) {
     geoLon_Left.slice(iAlt) = lon2d_left;
@@ -459,6 +480,8 @@ void Grid::create_cubesphere_grid(Quadtree quadtree) {
   arma_mat g21_upper_down(nLons, nLats + 1);
   arma_mat g22_upper_down(nLons, nLats + 1);
   arma_mat sqrt_g_down(nLons, nLats + 1);
+  arma_mat refx_angle_down_temp(nLons, nLats + 1);
+  arma_mat refy_angle_down_temp(nLons, nLats + 1);
 
   fill_cubesphere_lat_lon_from_norms(quadtree, dr, du, ll, nGCs, 0.5, 0.0,
                                      lat2d_down, lon2d_down,
@@ -471,7 +494,10 @@ void Grid::create_cubesphere_grid(Quadtree quadtree) {
                          A21_inv_down, A22_inv_down,
                          g11_upper_down, g12_upper_down,
                          g21_upper_down, g22_upper_down,
-                         sqrt_g_down);
+                         sqrt_g_down,
+                         refx_angle_down_temp, refy_angle_down_temp);
+  refx_angle_Down = refx_angle_down_temp;
+  refy_angle_Down = refy_angle_down_temp;
 
   for (iAlt = 0; iAlt < nAlts; iAlt++) {
     geoLon_Down.slice(iAlt) = lon2d_down;
@@ -881,19 +907,6 @@ void Grid::correct_xy_grid(Planets planet) {
     precision_t R = R_Alts(iAlt);
     refx_scgc.slice(iAlt) *= R;
     refy_scgc.slice(iAlt) *= R;
-    //A11_scgc.slice(iAlt) *= R;
-    //A12_scgc.slice(iAlt) *= R;
-    //A21_scgc.slice(iAlt) *= R;
-    //A22_scgc.slice(iAlt) *= R;
-    //A11_inv_scgc.slice(iAlt) /= R;
-    //A12_inv_scgc.slice(iAlt) /= R;
-    //A21_inv_scgc.slice(iAlt) /= R;
-    //A22_inv_scgc.slice(iAlt) /= R;
-    //g11_upper_scgc.slice(iAlt) /= R * R;
-    //g12_upper_scgc.slice(iAlt) /= R * R;
-    //g21_upper_scgc.slice(iAlt) /= R * R;
-    //g22_upper_scgc.slice(iAlt) /= R * R;
-    //sqrt_g_scgc.slice(iAlt) *= R * R;
 
     // Addition: Get a copy of dx dy
     arma_mat curr_refx = refx_scgc.slice(iAlt);
@@ -904,36 +917,8 @@ void Grid::correct_xy_grid(Planets planet) {
 
     refx_Left.slice(iAlt) *= R;
     refy_Left.slice(iAlt) *= R;
-    //A11_Left.slice(iAlt) *= R;
-    //A12_Left.slice(iAlt) *= R;
-    //A21_Left.slice(iAlt) *= R;
-    //A22_Left.slice(iAlt) *= R;
-    //A11_inv_Left.slice(iAlt) /= R;
-    //A12_inv_Left.slice(iAlt) /= R;
-    //A21_inv_Left.slice(iAlt) /= R;
-    //A22_inv_Left.slice(iAlt) /= R;
-    //g11_upper_Left.slice(iAlt) /= R * R;
-    //g12_upper_Left.slice(iAlt) /= R * R;
-    //g21_upper_Left.slice(iAlt) /= R * R;
-    //g22_upper_Left.slice(iAlt) /= R * R;
-    //sqrt_g_Left.slice(iAlt) *= R * R;
-
     refx_Down.slice(iAlt) *= R;
     refy_Down.slice(iAlt) *= R;
-    //A11_Down.slice(iAlt) *= R;
-    //A12_Down.slice(iAlt) *= R;
-    //A21_Down.slice(iAlt) *= R;
-    //A22_Down.slice(iAlt) *= R;
-    //A11_inv_Down.slice(iAlt) /= R;
-    //A12_inv_Down.slice(iAlt) /= R;
-    //A21_inv_Down.slice(iAlt) /= R;
-    //A22_inv_Down.slice(iAlt) /= R;
-    //g11_upper_Down.slice(iAlt) /= R * R;
-    //g12_upper_Down.slice(iAlt) /= R * R;
-    //g21_upper_Down.slice(iAlt) /= R * R;
-    //g22_upper_Down.slice(iAlt) /= R * R;
-    //sqrt_g_Down.slice(iAlt) *= R * R;
-
     refx_Corner.slice(iAlt) *= R;
     refy_Corner.slice(iAlt) *= R;
   }
@@ -965,13 +950,16 @@ bool Grid::init_geo_grid(Quadtree quadtree,
   else
     create_sphere_connection(quadtree);
 
-  if (input.get_do_restart()) {
+  if (input.get_do_restart() & !input.get_is_cubesphere()) {
     report.print(1, "Restarting! Reading grid files!");
     DidWork = read_restart(input.get_restartin_dir());
   } else {
-    if (input.get_is_cubesphere())
+    if (input.get_is_cubesphere()) {
+      if (input.get_do_restart())
+        report.print(0, "Not restarting the grid - it is too complicated!");
+
       create_cubesphere_grid(quadtree);
-    else
+    } else
       create_sphere_grid(quadtree);
 
     MPI_Barrier(aether_comm);
