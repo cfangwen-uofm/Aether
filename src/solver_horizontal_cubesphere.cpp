@@ -42,7 +42,7 @@ std::vector<arma_mat> Neutrals::residual_horizontal_rusanov(std::vector<arma_mat
 
     // Resolve to contravariant velocity
     arma_mat xVel = xMomentum/rho; // u^1
-    arma_mat yVel = xMomentum/rho; // u^2
+    arma_mat yVel = yMomentum/rho; // u^2
 
     // Generate velocity magnitude squared
     arma_mat vel2 = xVel % xVel + yVel % yVel;
@@ -341,8 +341,8 @@ void Neutrals::solver_horizontal_RK1(Grid& grid, Times& time) {
             for (int i = nGCs; i < nXs - nGCs; i++)
             {
                 rho(i, j) = rho_0(i, j) + dt*f_0_eq1(i,j) / jacobian(i, j);
-                xMomentum(i, j) = xMomentum_0(i, j) + dt*f_0_eq2(i,j) / jacobian(i, j);
-                yMomentum(i, j) = yMomentum_0(i, j) + dt*f_0_eq3(i,j) / jacobian(i, j);
+                xMomentum(i, j) = xMomentum_0(i, j) - dt*f_0_eq2(i,j) / jacobian(i, j);
+                yMomentum(i, j) = yMomentum_0(i, j) - dt*f_0_eq3(i,j) / jacobian(i, j);
                 rhoE(i, j) = rhoE_0(i, j) + dt*f_0_eq4(i,j) / jacobian(i, j);
             }
         }
