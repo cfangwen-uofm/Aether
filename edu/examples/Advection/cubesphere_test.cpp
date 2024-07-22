@@ -21,6 +21,7 @@ using arma_cube = arma::Cube<precision_t>;
 precision_t cPI = 3.141592653589793;
 precision_t cTWOPI = 2.0 * cPI;
 precision_t cPIdiv2 = cPI / 2;
+precision_t cGamma = 5.0 / 3.0;  // Specific ratio of heat
 
 // ---------------------------------------------------------
 // A couple of global variables
@@ -28,15 +29,62 @@ precision_t cPIdiv2 = cPI / 2;
 
 int64_t verbose = 1;
 
-struct projection_struct
-{
-
+struct projection_struct {
   arma_mat gradLR;
   arma_mat gradDU;
   arma_mat R;
   arma_mat L;
   arma_mat U;
   arma_mat D;
+};
+
+struct grid_struct {
+
+  // sizes:
+  int64_t nXt, nYt, nGCs;
+  int64_t iXfirst_, iXlast_;
+  int64_t iYfirst_, iYlast_;
+  
+  // Positions:
+  arma_mat x;
+  arma_mat y;
+  arma_mat lon;
+  arma_mat lat;
+  precision_t dx, dy, area;
+  
+  // Jacobian:
+  arma_mat jacobian;
+
+  // A + inverse of A:
+  arma_mat A11;
+  arma_mat A12;
+  arma_mat A21;
+  arma_mat A22;
+  arma_mat A11_inv;
+  arma_mat A12_inv;
+  arma_mat A21_inv;
+  arma_mat A22_inv;
+
+  // Only need g^(ij)
+  arma_mat g11;
+  arma_mat g12;
+  arma_mat g21;
+  arma_mat g22;
+  arma_mat g11_inv;
+  arma_mat g12_inv;
+  arma_mat g21_inv;
+  arma_mat g22_inv;
+
+  // These are for Ronchi et al., JCP 124, 93-114, 1996
+  arma_mat X, Y, C, D, d;
+  arma_mat dlx, dln, dS;
+  // xi is the LR direction
+  // nu is the UD direction
+  arma_mat xi, nu;
+  arma_mat Axt, Axp, Ant, Anp;
+  precision_t dxi, dnu;
+  arma_mat alpha, sinalpha;
+  
 };
 
 // ---------------------------------------------------------
@@ -47,9 +95,11 @@ precision_t calc_dt(double dx,
                     double dy,
                     arma_mat &wsLR,
                     arma_mat &wsDU,
-                    int64_t nGCs)
-{
+                    int64_t nGCs) {
 
+  if (verbose > 2)
+    std::cout << "  --> calc_dt\n";
+  
   int64_t nX = wsLR.n_rows;
   int64_t nY = wsLR.n_cols;
 
@@ -97,7 +147,6 @@ void output(arma_mat &values,
     outfile << nX << " " << nY << "\n";
   }
   outfile << values;
-  outfile << "----";
   outfile.close();
 }
 
@@ -162,7 +211,7 @@ void edge_metrics(int64_t face, arma_mat x, arma_mat y, precision_t R,
       lonp = std::atan(xp / a) + 3 * cPI / 2.;
       latp = std::atan(yp / a * std::cos(lonp - 3 * cPI / 2.));
 
-      // jacobian = R^2 * a / r^3
+      // jacobian = sqrt(R^2 * a / r^3)
       double g = (R * R * a / (rp * rp * rp));
       edge_jacobian(i, j) = std::sqrt(g);
 
@@ -285,7 +334,7 @@ void generate_x_y_cubesphere(int64_t face, int64_t nX, int64_t nY, int64_t nGCs,
          */
 
         // jacobian = R^2 * a / r^3
-        jacobian(iLR, iDU) = R * R * a / (rp * rp * rp);
+        jacobian(iLR, iDU) = std::sqrt(R * R * a / (rp * rp * rp));
 
         // Now A inv, Eqn(B10), Nair
         p = a / std::cos(latp) / std::cos(lonp- 3 * cPI / 2.) / R;
@@ -304,6 +353,249 @@ void generate_x_y_cubesphere(int64_t face, int64_t nX, int64_t nY, int64_t nGCs,
     }
   }
 }
+
+// ---------------------------------------------------------
+// Convert vector from u1, u2 to u, v
+//   -> Using Nair
+// ---------------------------------------------------------
+
+void convert_u1u2_to_uv(arma_mat u1,
+			arma_mat u2,
+			arma_mat u,
+			arma_mat v,
+			grid_struct grid) {
+
+  // Transform back to lon, lat:
+  // RL direction:
+  u = u1 % grid.A11 + u2 % grid.A12; // u^1
+  // UD direction:
+  v = u1 % grid.A21 + u2 % grid.A22; // u^2
+
+  return;
+}
+
+// ---------------------------------------------------------
+// Calculate the angle between the coordinates
+// ---------------------------------------------------------
+
+arma_mat calc_angle_between_coords(grid_struct grid) {
+
+  arma_mat e1Lat, e1Lon, e2Lat, e2Lon, m, one, zero;
+  arma_mat e1dote2, alpha;
+  
+  m.resize(grid.nXt, grid.nYt);
+  one.resize(grid.nXt, grid.nYt);
+  one.fill(1.0);
+  zero.resize(grid.nXt, grid.nYt);
+  zero.fill(0.0);
+  
+  // define e1 as the LR (xi) direction:
+  e1Lat.resize(grid.nXt, grid.nYt);
+  e1Lon.resize(grid.nXt, grid.nYt);
+  convert_u1u2_to_uv(one, zero, e1Lon, e1Lat, grid);
+  m = sqrt(e1Lon % e1Lon + e1Lat % e1Lat);
+  e1Lon = e1Lon / m;
+  e1Lat = e1Lat / m;
+
+  // define e2 as the DU (nu) direction:
+  e2Lat.resize(grid.nXt, grid.nYt);
+  e2Lon.resize(grid.nXt, grid.nYt);
+  convert_u1u2_to_uv(zero, one, e2Lon, e2Lat, grid);
+  m = sqrt(e2Lon % e2Lon + e2Lat % e2Lat);
+  e2Lon = e2Lon / m;
+  e2Lat = e2Lat / m;
+
+  alpha = acos(e1Lat % e2Lat + e1Lon % e2Lon);
+
+  return alpha;
+}
+
+
+grid_struct init_grid(int iFace,
+		      int64_t nX, int64_t nY, int64_t nGCs,
+		      precision_t R,
+		      precision_t xOff, precision_t yOff) {
+
+  grid_struct grid;
+  int64_t nXt = nX + 2 * nGCs;
+  int64_t nYt = nY + 2 * nGCs;
+  
+  grid.nXt = nXt;
+  grid.nYt = nYt;
+  grid.nGCs = nGCs;
+  grid.iXfirst_ = nGCs;
+  grid.iYfirst_ = nGCs;
+  grid.iXlast_ = nX + nGCs;
+  grid.iYlast_ = nY + nGCs;
+
+  // Positions: 
+  grid.x.resize(nXt, nYt);
+  grid.y.resize(nXt, nYt);
+  grid.lon.resize(nXt, nYt);
+  grid.lat.resize(nXt, nYt);
+
+  grid.jacobian.resize(nXt, nYt);
+
+  grid.A11.resize(nXt, nYt);
+  grid.A12.resize(nXt, nYt);
+  grid.A21.resize(nXt, nYt);
+  grid.A22.resize(nXt, nYt);
+  grid.A11_inv.resize(nXt, nYt);
+  grid.A12_inv.resize(nXt, nYt);
+  grid.A21_inv.resize(nXt, nYt);
+  grid.A22_inv.resize(nXt, nYt);
+
+  grid.g11.resize(nXt, nYt);
+  grid.g12.resize(nXt, nYt);
+  grid.g21.resize(nXt, nYt);
+  grid.g22.resize(nXt, nYt);
+  grid.g11_inv.resize(nXt, nYt);
+  grid.g12_inv.resize(nXt, nYt);
+  grid.g21_inv.resize(nXt, nYt);
+  grid.g22_inv.resize(nXt, nYt);
+
+  grid.xi.resize(nXt, nYt);
+  grid.nu.resize(nXt, nYt);
+  grid.X.resize(nXt, nYt);
+  grid.Y.resize(nXt, nYt);
+  grid.C.resize(nXt, nYt);
+  grid.D.resize(nXt, nYt);
+  grid.d.resize(nXt, nYt);
+  grid.dlx.resize(nXt, nYt);
+  grid.dln.resize(nXt, nYt);
+  grid.dS.resize(nXt, nYt);
+  grid.Axt.resize(nXt, nYt);
+  grid.Axp.resize(nXt, nYt);
+  grid.Ant.resize(nXt, nYt);
+  grid.Anp.resize(nXt, nYt);
+  grid.alpha.resize(nXt, nYt);
+  grid.sinalpha.resize(nXt, nYt);
+
+  precision_t dr = 2.0 / (nX - 1 + xOff*2);
+  precision_t du = 2.0 / (nY - 1 + yOff*2);
+
+  precision_t fortyfive = cPI/4.0;
+  precision_t dxi = 2.0 * fortyfive / (nX - 1 + xOff*2);
+  precision_t dnu = 2.0 * fortyfive / (nY - 1 + yOff*2);
+  
+  grid.dx = dr;
+  grid.dy = du;
+  grid.area = grid.dx * grid.dy;
+
+  grid.dxi = dxi;
+  grid.dnu = dnu;
+  
+  // Range factor (Local face of CubeSphere ranges [-a, a])
+  // doi: 10.1016/j.jcp.2007.07.022
+  // a = sqrt(3)/3*R
+  precision_t a = std::sqrt(3) / 3 * R;
+  precision_t xp, yp, zp, rp, latp, lonp, p, p2, g;
+
+  precision_t lonOff = 3 * cPI / 2.;
+  
+  // Loop through each point and derive the coordinate
+  for (int iDU = 0; iDU < nYt; iDU++) {
+    for (int iLR = 0; iLR < nXt; iLR++) {
+
+      // the offsets are so we can find cell centers, edges, and corners
+      double iD = iDU - nGCs + yOff;
+      double iL = iLR - nGCs + xOff;
+      
+      // Define local coordinates based on a
+      xp = (-1.0 + dr * iL) * a;
+      yp = (-1.0 + du * iD) * a;
+      rp = std::sqrt(xp * xp + yp * yp + a * a);
+
+      // Normalize local variable
+      // In fact, transforming local variable to global Cartesian
+      // x_cart = xp / rp * R;
+      // y_cart = -a / rp * R;
+      // z_cart = yp / rp * R;
+
+      // Transformation from 3D Cartesian to LatLong
+      // lonp = std::atan2(y_cart, x_cart) + cPI/2.0;
+      lonp = std::atan(xp / a) + lonOff;
+      latp = std::atan(yp / a * std::cos(lonp - lonOff));
+
+      // Fill Computed coords
+      grid.lat(iLR, iDU) = latp;
+      grid.lon(iLR, iDU) = lonp;
+      grid.x(iLR, iDU) = xp;
+      grid.y(iLR, iDU) = yp;
+
+      g = R * R * a / (rp * rp * rp);
+      grid.jacobian(iLR, iDU) = std::sqrt(g);
+
+      // Now A inv, Eqn(B10), Nair
+      p = a / std::cos(latp) / std::cos(lonp - lonOff) / R;
+      grid.A11_inv(iLR, iDU) = p / std::cos(lonp - lonOff);
+      grid.A12_inv(iLR, iDU) = 0;
+      grid.A21_inv(iLR, iDU) = p * std::tan(latp) * std::tan(lonp - lonOff);
+      grid.A22_inv(iLR, iDU) = p / std::cos(latp);
+      //grid.A22_inv(iLR, iDU) = 1.0 / std::sqrt(g);
+
+      // Just A
+      p2 = R * std::cos(latp) * std::cos(lonp - lonOff) / a;
+      grid.A11(iLR, iDU) = p2 * std::cos(lonp - lonOff);
+      grid.A12(iLR, iDU) = 0;
+      grid.A21(iLR, iDU) = -p2 * std::sin(latp) * std::sin(lonp - lonOff);
+      grid.A22(iLR, iDU) = p2 * std::cos(latp);
+      
+      // Lower indices, Eqn(B1), Nair
+      p = R * R / (rp * rp * rp * rp);
+      grid.g11(iLR, iDU) = p * (a * a + yp * yp);
+      grid.g12(iLR, iDU) = -p * xp * yp;
+      grid.g21(iLR, iDU) = -p * xp * yp;
+      grid.g22(iLR, iDU) = p * (a * a + xp * xp);
+
+      // Now upper indicies, Eqn(B1), Nair
+      grid.g11_inv(iLR, iDU) = grid.g22(iLR, iDU) / g;
+      grid.g12_inv(iLR, iDU) = -grid.g12(iLR, iDU) / g;
+      grid.g21_inv(iLR, iDU) = -grid.g21(iLR, iDU) / g;
+      grid.g22_inv(iLR, iDU) = grid.g11(iLR, iDU) / g;
+
+      // Define local coordinates based on a
+      grid.nu(iLR, iDU) = (-fortyfive + dnu * iL);
+      grid.xi(iLR, iDU) = (-fortyfive + dxi * iD);
+      grid.X(iLR, iDU) = tan(grid.xi(iLR, iDU));
+      grid.Y(iLR, iDU) = tan(grid.nu(iLR, iDU));
+      grid.d(iLR, iDU) =
+	1 +
+	grid.X(iLR, iDU)*grid.X(iLR, iDU) +
+	grid.Y(iLR, iDU)*grid.Y(iLR, iDU);
+      grid.C(iLR, iDU) = sqrt(1 +
+			      grid.X(iLR, iDU)*grid.X(iLR, iDU));
+      grid.D(iLR, iDU) = sqrt(1 +
+			      grid.Y(iLR, iDU)*grid.Y(iLR, iDU));
+      
+      grid.Axt(iLR, iDU) = 0.0;
+      grid.Axp(iLR, iDU) = grid.C(iLR, iDU) * grid.D(iLR, iDU) / sqrt(grid.d(iLR, iDU));
+      grid.Ant(iLR, iDU) = -1.0;
+      grid.Anp(iLR, iDU) = grid.X(iLR, iDU) * grid.Y(iLR, iDU) / sqrt(grid.d(iLR, iDU));
+
+      grid.dlx(iLR, iDU) =
+	R * grid.D(iLR, iDU) * dxi /
+	grid.d(iLR, iDU) /
+	cos(grid.xi(iLR, iDU)) * cos(grid.xi(iLR, iDU));
+      grid.dln(iLR, iDU) =
+	R * grid.C(iLR, iDU) * dnu /
+	grid.d(iLR, iDU) /
+	cos(grid.nu(iLR, iDU)) * cos(grid.nu(iLR, iDU));
+      
+      grid.dS(iLR, iDU) = R * R * dxi * dnu /
+	(std::pow(grid.d(iLR, iDU), 1.5) *
+	 cos(grid.xi(iLR, iDU)) * cos(grid.xi(iLR, iDU)) *
+	 cos(grid.nu(iLR, iDU)) * cos(grid.nu(iLR, iDU)));
+    }
+  }
+  //grid.alpha = calc_angle_between_coords(grid);
+  grid.sinalpha = sin(grid.alpha);
+  
+  return grid;
+}
+
+
+
 
 /**
  * Calculate Great Circle Distance
@@ -801,7 +1093,7 @@ arma_mat init_rho(arma_mat &x,
 
   r = sqrt((x - 0.0) % (x - 0.0) + (y - 0.0) % (y - 0.0));
   rho.fill(1.0);
-  // rho.elem( find( r < 0.25)).fill(2.2);
+  rho.elem( find( r < 0.25)).fill(2.2);
   // rho.elem( find( r < 0.25)) = 2.25 - r.elem( find( r < 0.25));
 
   return rho;
@@ -819,8 +1111,24 @@ arma_mat init_vel(arma_mat &x,
   arma_mat vel(nX, nY);
   // all cells positive to right:
   vel.zeros();
-  //vel.fill(0.1);
+  vel.fill(0.5);
   return vel;
+}
+
+
+// ---------------------------------------------------------
+// initial values
+// ---------------------------------------------------------
+
+arma_mat init_value(arma_mat &x,
+		    arma_mat &y,
+		    precision_t inVal)
+{
+  int64_t nX = x.n_rows;
+  int64_t nY = x.n_cols;
+  arma_mat val(nX, nY);
+  val.fill(inVal);
+  return val;
 }
 
 arma_mat init_vel2(arma_mat &x,
@@ -830,8 +1138,8 @@ arma_mat init_vel2(arma_mat &x,
   int64_t nY = x.n_cols;
   arma_mat vel(nX, nY);
   // all cells positive to right:
-  //vel.zeros();
-  vel.fill(0.1);
+  vel.zeros();
+  //vel.fill(1.0);
   return vel;
 }
 
@@ -847,431 +1155,469 @@ arma_mat init_temp(arma_mat &x,
   int64_t nY = x.n_cols;
 
   arma_mat temp(nX, nY);
-  double gamma = 5.0 / 3.0;
-  temp.fill(1. / ((gamma - 1) * gamma));
-  //temp.fill(1. / ((gamma - 1) * gamma));
+  temp.fill(0.5 / ((cGamma - 1) * cGamma));
   return temp;
 }
 
-int main()
-{
-  precision_t dt = 0.0001;        // Time Step
-  precision_t current_time = 0.0; // Initial Time 0
-  precision_t total_time = 2.0;   // Total simulation time
-  precision_t cfl = 0.1;         // CFL Number
-  precision_t gamma = 5.0 / 3.0;  // Specific ratio of heat
+// ---------------------------------------------------------
+// Calculate the max speed in the x and y directions
+// ---------------------------------------------------------
 
-  precision_t dtOut = 0.01; // Output Interval
+void calc_cmax(arma_mat &xVel,
+	       arma_mat &yVel,
+	       arma_mat &temp,
+	       arma_mat &xMax,
+	       arma_mat &yMax) {
 
-  int64_t nSteps = 50; // Number of Total Time steps
-  int64_t iStep;       // Iterator of Time Step
+  if (verbose > 2)
+    std::cout << "  --> calc_max\n";
+  
+  arma_mat xVel2, yVel2;
 
-  int64_t nX = 48;  // Number of x grid cells
-  int64_t nY = nX;  // Number of y grid cells
-  int64_t nGCs = 2; // Number of ghost cells
+  xVel2 = xVel % xVel;
+  yVel2 = yVel % yVel;
+  xMax = sqrt(xVel2) + sqrt(cGamma * (cGamma - 1) * temp);
+  yMax = sqrt(yVel2) + sqrt(cGamma * (cGamma - 1) * temp);
 
-  // Local Coordinates are nX+nGCs*2 by nY+nGCs*2
-  arma_mat x(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat y(nX + 2 * nGCs, nY + 2 * nGCs);
+  return;
+}
 
-  // Local Latitude and Longitude are nX+nGCs*2 by nY+nGCs*2
-  arma_mat lat(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat lon(nX + 2 * nGCs, nY + 2 * nGCs);
 
-  // Metrics regarding each cell are the same size as the number of cells
-  arma_mat jacobian(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A11_inv(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A12_inv(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A21_inv(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A22_inv(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A11(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A12(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A21(nX + 2 * nGCs, nY + 2 * nGCs);
-  arma_mat A22(nX + 2 * nGCs, nY + 2 * nGCs);
+// ---------------------------------------------------------
+// Set Boundary Conditions
+// ---------------------------------------------------------
 
-  // Radius of Sphere
-  precision_t R = 1.;
+void set_bcs(arma_mat &rho,
+	     arma_mat &xVel,
+	     arma_mat &yVel,
+	     arma_mat &temp,
+	     grid_struct gridC) {
 
-  if (verbose > 0)
-    std::cout << " --> generating cubesphere cell center and metrics\n";
+  if (verbose > 2)
+    std::cout << "  --> set_bcs\n";
+  
+  // ------------------------------------------------
+  // Exchange messages (set BCs, really):
+  for (int64_t i = gridC.iXfirst_; i < gridC.iXlast_; i++) {
+    for (int64_t j = 0; j < gridC.nGCs; j++) {
+      // bottom bc:
+      rho(i, gridC.iYfirst_ - 1 - j) = rho(i, gridC.iYlast_ - 1 - j);
+      // top bc:
+      rho(i, gridC.iYlast_ + j) = rho(i, gridC.iYfirst_ + j);
+    }
+  }
+  for (int64_t j = gridC.iYfirst_; j < gridC.iYlast_; j++) {
+    for (int64_t i = 0; i < gridC.nGCs; i++) {
+      // left bc:
+      rho(gridC.iXfirst_ - 1 - i, j) = rho(gridC.iXlast_ - 1 - i, j);
+      // right bc:
+      rho(gridC.iXlast_ + i, j) = rho(gridC.iXfirst_ + i, j);
+    }
+  }
+    
+  return;
+}
 
-  /** Generate cell centers */
-  generate_x_y_cubesphere(4, nX + 2 * nGCs, nY + 2 * nGCs, nGCs, R, 0.5, 0.5,
-                          lon, lat, jacobian, A11_inv, A12_inv, A21_inv, A22_inv, A11, A12, A21, A22, x, y, true);
+// ---------------------------------------------------------
+// Convert vector from Alat, Alon to Axi, Anu
+//   -> Using equation (7) of Ronchi et al:
+// ---------------------------------------------------------
 
-  /** Generate widths */
-  if (verbose > 0)
-    std::cout << " --> calculating dx dy\n";
-  // Since it is equidistant
-  precision_t dx = std::abs(x(0, 0) - x(1, 0));
-  precision_t dy = std::abs(y(0, 0) - y(0, 1));
+void convert_vector_ll_to_xn(arma_mat aLon,
+			     arma_mat aLat,
+			     arma_mat &aXi,
+			     arma_mat &aNu,
+			     grid_struct grid) {
 
-  /** Generate cell area (in reference space) */
-  if (verbose > 0)
-    std::cout << " --> calculating area\n";
-  precision_t area = dx * dy;
+  // Ronchi defines aPhi = aLon, aTheta = -aLat
+  aXi = -grid.Axt * aLat + grid.Axp * aLon;
+  aNu = -grid.Ant * aLat + grid.Anp * aLon;
 
-  /** Calculate edge midpoint locations in reference space */
-  if (verbose > 0)
-    std::cout << " --> calculating edges\n";
-  arma_mat xEdges = calc_bin_edges(x, true);
-  arma_mat yEdges = calc_bin_edges(y, false);
+  return;
+}
 
-  if (verbose > 0)
-    std::cout << " --> calculating edge metrics\n";
-  // Metrics regarding each cell edges are the same size as the number of edges
-  arma_mat jacobian_xEdges(nX + 2 * nGCs + 1, nY + 2 * nGCs);
+// ---------------------------------------------------------
+// Update States
+// ---------------------------------------------------------
 
-  // Remember, they are in fact metric tensor with upper indices.
-  arma_mat g11_xEdges(nX + 2 * nGCs + 1, nY + 2 * nGCs);
-  arma_mat g12_xEdges(nX + 2 * nGCs + 1, nY + 2 * nGCs);
-  arma_mat g21_xEdges(nX + 2 * nGCs + 1, nY + 2 * nGCs);
-  arma_mat g22_xEdges(nX + 2 * nGCs + 1, nY + 2 * nGCs);
-  edge_metrics(4, xEdges, y, R, jacobian_xEdges, g11_xEdges,
-               g12_xEdges, g21_xEdges, g22_xEdges);
+void update_states(arma_mat rho,
+		   arma_mat &xVel,
+		   arma_mat &yVel,
+		   arma_mat &temp,
+		   arma_mat &drhodt,
+		   arma_mat &dxVeldt,
+		   arma_mat &dyVeldt,
+		   arma_mat &dtempdt,
+		   grid_struct gridC,
+		   grid_struct gridL,
+		   grid_struct gridD,
+		   precision_t dt) {
 
-  arma_mat jacobian_yEdges(nX + 2 * nGCs, nY + 2 * nGCs + 1);
-  arma_mat g11_yEdges(nX + 2 * nGCs, nY + 2 * nGCs + 1);
-  arma_mat g12_yEdges(nX + 2 * nGCs, nY + 2 * nGCs + 1);
-  arma_mat g21_yEdges(nX + 2 * nGCs, nY + 2 * nGCs + 1);
-  arma_mat g22_yEdges(nX + 2 * nGCs, nY + 2 * nGCs + 1);
-  edge_metrics(4, x, yEdges, R, jacobian_yEdges, g11_yEdges,
-               g12_yEdges, g21_yEdges, g22_yEdges);
+  arma_mat xMomentum, yMomentum;
+  arma_mat rhoE;
 
-  /** State Initialization */
-  /// Initialize Density
-  if (verbose > 0)
-    std::cout << "---> initializing rho\n";
-  arma_mat rho = init_rho(x, y); // rho, pure scalar field
-
-  /// Initialize Velocity and Momentum
-  if (verbose > 0)
-    std::cout << "---> initializing vel\n";
-  // Initialize spherical velocity
-  arma_mat xVelSph = init_vel(x, y);
-  arma_mat yVelSph = init_vel2(x, y);
-  // Transform to reference/local velocity (contravariant velocity)
-  arma_mat xVel = xVelSph % A11_inv + yVelSph % A12_inv; // u^1
-  arma_mat yVel = xVelSph % A21_inv + yVelSph % A22_inv; // u^2
-
-  if (verbose > 0)
-    std::cout << "---> initializing momentum\n";
-  // The following two are used for iteration
-  arma_mat xMomentum = rho % xVel; // x1momentum, pure scalar field
-  arma_mat yMomentum = rho % yVel; // x2momentum, pure scalar field
-
-  /// Initialize total energy
-  if (verbose > 0)
-    std::cout << "---> initializing energy\n";
-  arma_mat rhoE = rho % init_temp(x, y); // rhoE, pure scalar field
+  if (verbose > 2)
+    std::cout << "  --> update_states\n";
+  
+  // Derived variables:
+  xMomentum = rho % xVel; // x1momentum, pure scalar field
+  yMomentum = rho % yVel; // y1momentum, pure scalar field
+  rhoE = rho % temp; 
 
   /** Initialize projection constructs */
-  projection_struct rhoP;
-  projection_struct xMomentumP;
-  projection_struct yMomentumP;
-  projection_struct rhoEP;
+  static projection_struct rhoP;
+  static projection_struct xMomentumP, xVelP;
+  static projection_struct yMomentumP, yVelP;
+  static projection_struct rhoEP;
 
   // They are all pure scalar fields without sqrt(g)
-  arma_mat rhoL, rhoR, rhoD, rhoU;
-  arma_mat xVelL, xVelR, xVelD, xVelU;
-  arma_mat yVelL, yVelR, yVelD, yVelU;
-  arma_mat totaleL, totaleR, totaleD, totaleU;
-
-  arma_mat velL2, velR2, velD2, velU2;
-  arma_mat tempL, tempR, tempD, tempU;
-  arma_mat pressureL, pressureR, pressureD, pressureU;
+  static arma_mat rhoL, rhoR, rhoD, rhoU;
+  static arma_mat xVelL, xVelR, xVelD, xVelU;
+  static arma_mat yVelL, yVelR, yVelD, yVelU;
+  static arma_mat totaleL, totaleR, totaleD, totaleU;
+  static arma_mat velL2, velR2, velD2, velU2;
+  static arma_mat tempL, tempR, tempD, tempU;
+  static arma_mat pressureL, pressureR, pressureD, pressureU;
   
   /** Initialize Flux and Wave Speed Storages */
-  arma_mat eq1FluxLR, eq1FluxDU;
-  arma_mat eq1FluxL, eq1FluxR, eq1FluxD, eq1FluxU;
-
-  arma_mat eq2FluxLR, eq2FluxDU;
-  arma_mat eq2FluxL, eq2FluxR, eq2FluxD, eq2FluxU;
-
-  arma_mat eq3FluxLR, eq3FluxDU;
-  arma_mat eq3FluxL, eq3FluxR, eq3FluxD, eq3FluxU;
-
-  arma_mat eq4FluxLR, eq4FluxDU;
-  arma_mat eq4FluxL, eq4FluxR, eq4FluxD, eq4FluxU;
+  static arma_mat eq1FluxLR, eq1FluxDU;
+  static arma_mat eq1FluxL, eq1FluxR, eq1FluxD, eq1FluxU;
+  static arma_mat eq2FluxLR, eq2FluxDU;
+  static arma_mat eq2FluxL, eq2FluxR, eq2FluxD, eq2FluxU;
+  static arma_mat eq3FluxLR, eq3FluxDU;
+  static arma_mat eq3FluxL, eq3FluxR, eq3FluxD, eq3FluxU;
+  static arma_mat eq4FluxLR, eq4FluxDU;
+  static arma_mat eq4FluxL, eq4FluxR, eq4FluxD, eq4FluxU;
 
   arma_mat wsL, wsR, wsD, wsU, wsLR, wsDU;
 
   arma_mat diff; // for Riemann Solver
 
-  /** SOME BC EXCHANGE CODE THAT DOES NOT EXIST (Dirichilet BC) */
+  arma_mat rhoG = rho % gridC.jacobian;
+  
+  rhoP = project_to_edges(rhoG, gridC.x, gridL.x, gridC.y, gridD.y, gridC.nGCs);
+  xVelP = project_to_edges(xVel, gridC.x, gridL.x, gridC.y, gridD.y, gridC.nGCs);
+  yVelP = project_to_edges(yVel, gridC.x, gridL.x, gridC.y, gridD.y, gridC.nGCs);
+  xMomentumP = project_to_edges(xMomentum, gridC.x, gridL.x, gridC.y, gridD.y, gridC.nGCs);
+  yMomentumP = project_to_edges(yMomentum, gridC.x, gridL.x, gridC.y, gridD.y, gridC.nGCs);
+  rhoEP = project_to_edges(rhoE, gridC.x, gridL.x, gridC.y, gridD.y, gridC.nGCs);
+
+  // Resolve Scalar Fields into rho, xVel, yVel, and totalE (without rho)
+  rhoL = rhoP.L;
+  rhoR = rhoP.R;
+  rhoD = rhoP.D;
+  rhoU = rhoP.U;
+
+  xVelL = xVelP.L;
+  xVelR = xVelP.R;
+  xVelD = xVelP.D;
+  xVelU = xVelP.U;
+
+  yVelL = yVelP.L;
+  yVelR = yVelP.R;
+  yVelD = yVelP.D;
+  yVelU = yVelP.U;
+
+  totaleL = rhoEP.L / rhoL;
+  totaleR = rhoEP.R / rhoR;
+  totaleD = rhoEP.D / rhoD;
+  totaleU = rhoEP.U / rhoU;
+
+  velL2 = (xVelL % xVelL + yVelL % yVelL);
+  velR2 = (xVelR % xVelR + yVelR % yVelR);
+  velD2 = (xVelD % xVelD + yVelD % yVelD);
+  velU2 = (xVelU % xVelU + yVelU % yVelU);
+
+  tempL = totaleL - 0.5 * velL2;
+  tempR = totaleR - 0.5 * velR2;
+  tempD = totaleD - 0.5 * velD2;
+  tempU = totaleU - 0.5 * velU2;
+
+  pressureL = (cGamma - 1) * (rhoP.L % tempL);
+  pressureR = (cGamma - 1) * (rhoP.R % tempR);
+  pressureD = (cGamma - 1) * (rhoP.D % tempD);
+  pressureU = (cGamma - 1) * (rhoP.U % tempU);
+
+  // Flux calculated from the left of the edge
+  eq1FluxL = rhoL % xVelL;
+  // Flux calculated from the right of the edge
+  eq1FluxR = rhoR % xVelR;
+  // Flux calculated from the down of the edge
+  eq1FluxD = rhoD % yVelD;
+  // Flux calculated from the up of the edge
+  eq1FluxU = rhoU % yVelU;
+
+  eq2FluxL = (rhoL % xVelL % xVelL + pressureL % gridL.g11_inv) % gridL.jacobian;
+  eq2FluxR = (rhoR % xVelR % xVelR + pressureR % gridL.g11_inv) % gridL.jacobian;
+  eq2FluxD = (rhoD % yVelD % xVelD + pressureD % gridD.g12_inv) % gridD.jacobian;
+  eq2FluxU = (rhoU % yVelU % xVelU + pressureU % gridD.g12_inv) % gridD.jacobian;
+
+  eq3FluxL = (rhoL % xVelL % yVelL + pressureL % gridL.g21_inv) % gridL.jacobian;
+  eq3FluxR = (rhoR % xVelR % yVelR + pressureR % gridL.g21_inv) % gridL.jacobian;
+  eq3FluxD = (rhoD % yVelD % yVelD + pressureD % gridD.g22_inv) % gridD.jacobian;
+  eq3FluxU = (rhoU % yVelU % yVelU + pressureU % gridD.g22_inv) % gridD.jacobian;
+
+  eq4FluxL = (totaleL % rhoL + pressureL) % xVelL % gridL.jacobian;
+  eq4FluxR = (totaleR % rhoR + pressureR) % xVelR % gridL.jacobian;
+  eq4FluxD = (totaleD % rhoD + pressureD) % yVelD % gridD.jacobian;
+  eq4FluxU = (totaleU % rhoU + pressureU) % yVelU % gridD.jacobian;
+
+  // ------------------------------------------------
+  // Calculate the wave speed for the diffusive flux:
+  // In Reference velocities
+
+  if (verbose > 3)
+    std::cout << "  ---> Diffusive Fluxes\n";
+  wsL = sqrt(velL2) + sqrt(cGamma * (cGamma - 1) * tempL);
+  wsR = sqrt(velR2) + sqrt(cGamma * (cGamma - 1) * tempR);
+  wsD = sqrt(velD2) + sqrt(cGamma * (cGamma - 1) * tempD);
+  wsU = sqrt(velU2) + sqrt(cGamma * (cGamma - 1) * tempU);
+
+  wsLR = wsR;
+  for (int64_t i = 0; i < gridC.nXt + 1; i++) {
+    for (int64_t j = 0; j < gridC.nYt; j++) {
+      if (wsL(i, j) > wsLR(i, j))
+	wsLR(i, j) = wsL(i, j);
+    }
+  }
+
+  wsDU = wsD;
+  for (int64_t i = 0; i < gridC.nXt; i++) {
+    for (int64_t j = 0; j < gridC.nYt + 1; j++) {
+      if (wsU(i, j) > wsDU(i, j))
+	wsDU(i, j) = wsU(i, j);
+    }
+  }
+
+  // ------------------------------------------------
+  // Calculate average flux at the edges (Rusanov Flux):
+
+  if (verbose > 3)
+    std::cout << "  ---> Averaging fluxes at edges\n";
+
+  diff = (rhoR - rhoL); // % gridL.jacobian; // State difference, need to add sqrt(g)
+  eq1FluxLR = (eq1FluxL + eq1FluxR) / 2 + 0.5 * wsLR % diff;
+  diff = (rhoU - rhoD); // % gridD.jacobian;
+  eq1FluxDU = (eq1FluxD + eq1FluxU) / 2 + 0.5 * wsDU % diff;
+
+  diff = (rhoR % xVelR - rhoL % xVelL) % gridL.jacobian;
+  eq2FluxLR = (eq2FluxL + eq2FluxR) / 2 + 0.5 * wsLR % diff;
+  diff = (rhoU % xVelU - rhoD % xVelD) % gridD.jacobian;
+  eq2FluxDU = (eq2FluxD + eq2FluxU) / 2 + 0.5 * wsDU % diff;
+
+  diff = (rhoR % yVelR - rhoL % yVelL) % gridL.jacobian;
+  eq3FluxLR = (eq3FluxL + eq3FluxR) / 2 + 0.5 * wsLR % diff;
+  diff = (rhoU % yVelU - rhoD % yVelD) % gridD.jacobian;
+  eq3FluxDU = (eq3FluxD + eq3FluxU) / 2 + 0.5 * wsDU % diff;
+
+  diff = (rhoR % totaleR - rhoL % totaleL) % gridL.jacobian;
+  eq4FluxLR = (eq4FluxL + eq4FluxR) / 2 + 0.5 * wsLR % diff;
+  diff = (rhoU % totaleU - rhoD % totaleD) % gridD.jacobian;
+  eq4FluxDU = (eq4FluxD + eq4FluxU) / 2 + 0.5 * wsDU % diff;
+
+  // ------------------------------------------------
+  // Update values:
+  if (verbose > 3)
+    std::cout << "  ---> Updating equations of state\n";
+
+  // Only deal with inner cell
+  for (int64_t j = gridC.iYfirst_; j < gridC.iYlast_; j++) {
+    for (int64_t i = gridC.iXfirst_; i < gridC.iXlast_; i++) {
+      precision_t rhoResidual_ij = (gridC.dy * eq1FluxLR(i + 1, j) -
+				    gridC.dy * eq1FluxLR(i, j) +
+				    gridC.dx * eq1FluxDU(i, j + 1) -
+				    gridC.dx * eq1FluxDU(i, j));
+      drhodt(i,j) = rhoResidual_ij / gridC.area / gridC.jacobian(i, j);
+      //rho(i, j) = rho(i, j) - dt / gridC.area / gridC.jacobian(i, j) * rhoResidual_ij;
+
+      precision_t xMomentumResidual_ij = (gridC.dy * eq2FluxLR(i + 1, j) -
+					  gridC.dy * eq2FluxLR(i, j) +
+					  gridC.dx * eq2FluxDU(i, j + 1) -
+					  gridC.dx * eq2FluxDU(i, j));
+      //xMomentum(i, j) = xMomentum(i, j) - dt / gridC.area / gridC.jacobian(i, j) * xMomentumResidual_ij;
+
+      precision_t yMomentumResidual_ij = (gridC.dy * eq3FluxLR(i + 1, j) -
+					  gridC.dy * eq3FluxLR(i, j) +
+					  gridC.dx * eq3FluxDU(i, j + 1) -
+					  gridC.dx * eq3FluxDU(i, j));
+      //yMomentum(i, j) = yMomentum(i, j) - dt / gridC.area / gridC.jacobian(i, j) * yMomentumResidual_ij;
+
+      precision_t rhoEResidual_ij = (gridC.dy * eq4FluxLR(i + 1, j) -
+				     gridC.dy * eq4FluxLR(i, j) +
+				     gridC.dx * eq4FluxDU(i, j + 1) -
+				     gridC.dx * eq4FluxDU(i, j));
+      //rhoE(i, j) = rhoE(i,j) - dt / gridC.area / gridC.jacobian(i, j) * rhoEResidual_ij;
+
+    }
+  }
+
+  return;
+}
+
+
+// ---------------------------------------------------------
+// Main Code!
+// ---------------------------------------------------------
+
+int main() {
+  precision_t dt;        // Time Step
+  precision_t current_time = 0.0; // Initial Time 0
+  precision_t total_time = 0.1;   // Total simulation time
+  precision_t cfl = 0.3;
+
+  precision_t dtOut = total_time/50.0; // Output Interval
+  precision_t dtReport = total_time/200.0; // Output Interval
+
+  int64_t iStep;    // Iterator of Time Step
+
+  int64_t nX = 50;  // Number of x grid cells
+  int64_t nY = 100; // Number of y grid cells
+  int64_t nGCs = 2; // Number of ghost cells
+
+  // Radius of Sphere
+  precision_t R = 1.;
+
+  if (verbose > 0)
+    std::cout << "> generating cubesphere cell center and metrics\n";
+
+  int iFace = 0;
+  grid_struct gridC = init_grid(iFace, nX, nY, nGCs, R, 0.5, 0.5);
+  grid_struct gridL = init_grid(iFace, nX+1, nY, nGCs, R, 0.0, 0.5);
+  grid_struct gridD = init_grid(iFace, nX, nY+1, nGCs, R, 0.5, 0.0);
+  
+  /** Generate widths */
+  if (verbose > 0)
+    std::cout << "> calculating dx dy\n";
+  // Since it is equidistant
+  precision_t dx = gridC.dx;
+  precision_t dy = gridC.dy;
+
+  /** State Initialization */
+  /// Initialize Density
+  if (verbose > 0)
+    std::cout << "> initializing rho\n";
+  arma_mat rho = init_rho(gridC.x, gridC.y); // rho, pure scalar field
+
+  /// Initialize Velocity and Momentum
+  if (verbose > 0)
+    std::cout << "> initializing vel\n";
+
+  // Initialize spherical velocity
+  // Supposed to be Longitudinal Velocity:
+  arma_mat xVelSph = init_value(gridC.x, gridC.y, 0.0);
+  // Supposed to be Latitudinal Velocity:
+  arma_mat yVelSph = init_value(gridC.x, gridC.y, 0.5);
+  
+  // Transform to reference/local velocity (contravariant velocity)
+  // RL direction:
+  arma_mat xVel = xVelSph % gridC.A11_inv + yVelSph % gridC.A12_inv; // u^1
+  // UD direction:
+  arma_mat yVel = -xVelSph % gridC.A21_inv + yVelSph % gridC.A22_inv; // u^2
+
+  
+  /// Initialize total energy
+  if (verbose > 0)
+    std::cout << "> initializing energy\n";
+  arma_mat temp = init_temp(gridC.x, gridC.y);
 
   /** Output some pre-simulation results */
   if (verbose > 0)
-    std::cout << "---> outputting\n";
-  output(x, "x.txt", false);
-  output(y, "y.txt", false);
-  output(xEdges, "xEdges.txt", false);
-  output(yEdges, "yEdges.txt", false);
-  output(lat, "lat.txt", false);
-  output(lon, "lon.txt", false);
+    std::cout << "-> outputting\n";
+  output(gridC.x, "x.txt", false);
+  output(gridC.y, "y.txt", false);
+  output(gridC.lat, "lat.txt", false);
+  output(gridC.lon, "lon.txt", false);
+  output(gridC.alpha, "alpha.txt", false);
   output(rho, "rho.txt", false);
-  output(xMomentum, "xMomentum.txt", false);
-  output(yMomentum, "yMomentum.txt", false);
   output(xVel, "xVel.txt", false);
   output(yVel, "yVel.txt", false);
-  output(rhoE, "rhoE.txt", false);
-
+  output(temp, "temp.txt", false);
   iStep = 0;
 
-  while (current_time < total_time)
-  {
+  arma_mat xMax, yMax;
 
-    if (verbose > 0)
+  arma_mat drhodt;
+  arma_mat dxVeldt, dyVeldt;
+  arma_mat dtempdt;
+
+  drhodt.resize(gridC.nXt, gridC.nYt);
+  dxVeldt.resize(gridC.nXt, gridC.nYt);
+  dyVeldt.resize(gridC.nXt, gridC.nYt);
+  dtempdt.resize(gridC.nXt, gridC.nYt);
+
+  arma_mat k1rho, k2rho, k3rho, k4rho, rhoInterK1, rhoInterK2, rhoInterK3;
+  k1rho.resize(gridC.nXt, gridC.nYt);
+  k2rho.resize(gridC.nXt, gridC.nYt);
+  k3rho.resize(gridC.nXt, gridC.nYt);
+  k4rho.resize(gridC.nXt, gridC.nYt);
+  
+  rhoInterK1.resize(gridC.nXt, gridC.nYt);
+  rhoInterK2.resize(gridC.nXt, gridC.nYt);
+  rhoInterK3.resize(gridC.nXt, gridC.nYt);
+  
+  while (current_time < total_time) {
+
+    if (int((current_time - dt)/dtReport) != int((current_time )/dtReport)) {
       std::cout << "step : " << iStep << "; time : " << current_time << "\n";
-
-    iStep++;
-
-    // -----------------------------------
-    /** Project State Variables (pure scalar fields with pulled sqrt(g)) to Edges: */
-
-    if (verbose > 3)
-      std::cout << "Projecting\n";
-
-    rhoP = project_to_edges(rho, x, xEdges, y, yEdges, nGCs);
-    xMomentumP = project_to_edges(xMomentum, x, xEdges, y, yEdges, nGCs);
-    yMomentumP = project_to_edges(yMomentum, x, xEdges, y, yEdges, nGCs);
-    rhoEP = project_to_edges(rhoE, x, xEdges, y, yEdges, nGCs);
-
-    // Resolve Scalar Fields into rho, xVel, yVel, and totalE (without rho)
-    rhoL = rhoP.L;
-    rhoR = rhoP.R;
-    rhoD = rhoP.D;
-    rhoU = rhoP.U;
-
-    xVelL = xMomentumP.L / rhoL;
-    xVelR = xMomentumP.R / rhoR;
-    xVelD = xMomentumP.D / rhoD;
-    xVelU = xMomentumP.U / rhoU;
-
-    yVelL = yMomentumP.L / rhoL;
-    yVelR = yMomentumP.R / rhoR;
-    yVelD = yMomentumP.D / rhoD;
-    yVelU = yMomentumP.U / rhoU;
-
-    totaleL = rhoEP.L / rhoL;
-    totaleR = rhoEP.R / rhoR;
-    totaleD = rhoEP.D / rhoD;
-    totaleU = rhoEP.U / rhoU;
-
-    velL2 = (xVelL % xVelL + yVelL % yVelL);
-    velR2 = (xVelR % xVelR + yVelR % yVelR);
-    velD2 = (xVelD % xVelD + yVelD % yVelD);
-    velU2 = (xVelU % xVelU + yVelU % yVelU);
-
-    tempL = totaleL - 0.5 * velL2;
-    tempR = totaleR - 0.5 * velR2;
-    tempD = totaleD - 0.5 * velD2;
-    tempU = totaleU - 0.5 * velU2;
-
-    pressureL = (gamma - 1) * (rhoP.L % tempL);
-    pressureR = (gamma - 1) * (rhoP.R % tempR);
-    pressureD = (gamma - 1) * (rhoP.D % tempD);
-    pressureU = (gamma - 1) * (rhoP.U % tempU);
-
-    // ------------------------------------------------
-    // Calculate fluxes of different terms at the edges:
-    // All fluxes are in spherical sense, local coords
-
-    if (verbose > 3)
-      std::cout << "Calculating Fluxes\n";
-    
-    // Note that dot product between normal vector at edge and flux vector
-    // resolves into a pure one component flux or either hat{x} or hat{y}
-
-    // Flux calculated from the left of the edge
-    eq1FluxL = rhoL % xVelL % jacobian_xEdges;
-    // Flux calculated from the right of the edge
-    eq1FluxR = rhoR % xVelR % jacobian_xEdges;
-    // Flux calculated from the down of the edge
-    eq1FluxD = rhoD % yVelD % jacobian_yEdges;
-    // Flux calculated from the up of the edge
-    eq1FluxU = rhoU % yVelU % jacobian_yEdges;
-
-    eq2FluxL = (rhoL % xVelL % xVelL + pressureL % g11_xEdges) % jacobian_xEdges;
-    eq2FluxR = (rhoR % xVelR % xVelR + pressureR % g11_xEdges) % jacobian_xEdges;
-    eq2FluxD = (rhoD % yVelD % xVelD + pressureD % g12_yEdges) % jacobian_yEdges;
-    eq2FluxU = (rhoU % yVelU % xVelU + pressureU % g12_yEdges) % jacobian_yEdges;
-
-    eq3FluxL = (rhoL % xVelL % yVelL + pressureL % g21_xEdges) % jacobian_xEdges;
-    eq3FluxR = (rhoR % xVelR % yVelR + pressureR % g21_xEdges) % jacobian_xEdges;
-    eq3FluxD = (rhoD % yVelD % yVelD + pressureD % g22_yEdges) % jacobian_yEdges;
-    eq3FluxU = (rhoU % yVelU % yVelU + pressureU % g22_yEdges) % jacobian_yEdges;
-
-    eq4FluxL = (totaleL % rhoL + pressureL) % xVelL % jacobian_xEdges;
-    eq4FluxR = (totaleR % rhoR + pressureR) % xVelR % jacobian_xEdges;
-    eq4FluxD = (totaleD % rhoD + pressureD) % yVelD % jacobian_yEdges;
-    eq4FluxU = (totaleU % rhoU + pressureU) % yVelU % jacobian_yEdges;
-
-    // ------------------------------------------------
-    // Calculate the wave speed for the diffusive flux:
-    // In Reference velocities
-
-    if (verbose > 3)
-      std::cout << "Diffusive Fluxes\n";
-    wsL = sqrt(velL2) + sqrt(gamma * (gamma - 1) * tempL);
-    wsR = sqrt(velR2) + sqrt(gamma * (gamma - 1) * tempR);
-    wsD = sqrt(velD2) + sqrt(gamma * (gamma - 1) * tempD);
-    wsU = sqrt(velU2) + sqrt(gamma * (gamma - 1) * tempU);
-
-    wsLR = wsR;
-    for (int64_t i = 0; i < nX + 1; i++)
-    {
-      for (int64_t j = 0; j < nY; j++)
-      {
-        if (wsL(i, j) > wsLR(i, j))
-          wsLR(i, j) = wsL(i, j);
-      }
+      arma_vec amin, amax;
+      precision_t mini, maxi;
+      amin = rho.min();
+      mini = amin.min();
+      amax = max(rho,1);
+      maxi = arma::max(amax);
+      std::cout << "  -> min/max (rho) : " << mini << " / " << maxi << "\n";
     }
 
-    wsDU = wsD;
-    for (int64_t i = 0; i < nX; i++)
-    {
-      for (int64_t j = 0; j < nY + 1; j++)
-      {
-        if (wsU(i, j) > wsDU(i, j))
-          wsDU(i, j) = wsU(i, j);
-      }
-    }
-
-    // ------------------------------------------------
-    // Calculate dt based on max waves speeds and cell sizes
-
-    if (verbose > 3)
-      std::cout << "Calculating dt\n";
-
-    dt = calc_dt(dx, dy, wsLR, wsDU, nGCs);
+    calc_cmax(xVel, yVel, temp, xMax, yMax);
+    dt = calc_dt(gridC.dx, gridC.dy, xMax, yMax, gridC.nGCs);
     dt = cfl * dt;
+
+    // k1 - start at t0, go to t+1/2 to figure out slope at t0 (k1)
+    update_states(rho, xVel, yVel, temp,
+		  k1rho, dxVeldt, dyVeldt, dtempdt,
+		  gridC, gridL, gridD, dt/2);
+
+    // Take 1/2 step to figure out t+1/2 values, using k1:
+    rhoInterK1 = rho + k1rho * dt/2;
+    set_bcs(rhoInterK1, xVel, yVel, temp, gridC);
+    // k2 - start at t+1/2, go to t+1 to figure out slope at t+1/2 (k2)
+    update_states(rhoInterK1, xVel, yVel, temp,
+		  k2rho, dxVeldt, dyVeldt, dtempdt,
+		  gridC, gridL, gridD, dt/2);
+
+    // Take 1/2 step to figure out t+1/2 values, using k2:
+    rhoInterK2 = rho + k2rho * dt/2;
+    set_bcs(rhoInterK2, xVel, yVel, temp, gridC);
+    // k3 - start at t+1/2, go to t+1 to figure out slope at t+1/2 (k3)
+    update_states(rhoInterK2, xVel, yVel, temp,
+		  k3rho, dxVeldt, dyVeldt, dtempdt,
+		  gridC, gridL, gridD, dt/2);
+
+    // Take full step to figure out k4, using k3 slope:
+    rhoInterK3 = rho + k3rho * dt;
+    set_bcs(rhoInterK3, xVel, yVel, temp, gridC);
+    // k4 - start at t+1, go to t+2 to figure out slope at t+1 (k4)
+    update_states(rhoInterK3, xVel, yVel, temp,
+		  k4rho, dxVeldt, dyVeldt, dtempdt,
+		  gridC, gridL, gridD, dt);
+    
+    rho = rho - dt/6 * (k1rho + 2 * k2rho + 2 * k3rho + k4rho);
+    set_bcs(rho, xVel, yVel, temp, gridC);
+    
+    iStep++;
     current_time += dt;
 
-    // ------------------------------------------------
-    // Calculate average flux at the edges (Rusanov Flux):
-
     if (verbose > 3)
-      std::cout << "Averaging fluxes at edges\n";
+      std::cout << "  ---> Outputing\n";
 
-    diff = (rhoR - rhoL) % jacobian_xEdges; // State difference, need to add sqrt(g)
-    eq1FluxLR = (eq1FluxL + eq1FluxR) / 2 + 0.5 * wsLR % diff;
-    diff = (rhoU - rhoD) % jacobian_yEdges;
-    eq1FluxDU = (eq1FluxD + eq1FluxU) / 2 + 0.5 * wsDU % diff;
-
-    diff = (rhoR % xVelR - rhoL % xVelL) % jacobian_xEdges;
-    eq2FluxLR = (eq2FluxL + eq2FluxR) / 2 + 0.5 * wsLR % diff;
-    diff = (rhoU % xVelU - rhoD % xVelD) % jacobian_yEdges;
-    eq2FluxDU = (eq2FluxD + eq2FluxU) / 2 + 0.5 * wsDU % diff;
-
-    diff = (rhoR % yVelR - rhoL % yVelL) % jacobian_xEdges;
-    eq3FluxLR = (eq3FluxL + eq3FluxR) / 2 + 0.5 * wsLR % diff;
-    diff = (rhoU % yVelU - rhoD % yVelD) % jacobian_yEdges;
-    eq3FluxDU = (eq3FluxD + eq3FluxU) / 2 + 0.5 * wsDU % diff;
-
-    diff = (rhoR % totaleR - rhoL % totaleL) % jacobian_xEdges;
-    eq4FluxLR = (eq4FluxL + eq4FluxR) / 2 + 0.5 * wsLR % diff;
-    diff = (rhoU % totaleU - rhoD % totaleD) % jacobian_yEdges;
-    eq4FluxDU = (eq4FluxD + eq4FluxU) / 2 + 0.5 * wsDU % diff;
-
-    // ------------------------------------------------
-    // Update values:
-    if (verbose > 3)
-      std::cout << "Updating equations of state\n";
-
-    // Total residual norm for this iteration (for L1 Residua; Norm Calc)
-    precision_t residual_ij = 0;
-
-    // Only deal with inner cell
-    for (int64_t j = nGCs; j < nY + nGCs; j++)
-    {
-      for (int64_t i = nGCs; i < nX + nGCs; i++)
-      {
-        precision_t rhoResidual_ij = (dy * eq1FluxLR(i + 1, j) -
-                                      dy * eq1FluxLR(i, j) +
-                                      dx * eq1FluxDU(i, j + 1) -
-                                      dx * eq1FluxDU(i, j));
-        rho(i, j) = rho(i, j) - dt / area / jacobian(i, j) * rhoResidual_ij;
-
-        if (i == 25 && j == 2)
-        {
-          std::cout << (dy * eq1FluxLR(i + 1, j) -
-                        dy * eq1FluxLR(i, j) +
-                        dx * eq1FluxDU(i, j + 1) -
-                        dx * eq1FluxDU(i, j))
-                    << std::endl;
-        }
-
-
-        precision_t xMomentumResidual_ij = dy * eq2FluxLR(i + 1, j) -
-                                           dy * eq2FluxLR(i, j) +
-                                           dx * eq2FluxDU(i, j + 1) -
-                                           dx * eq2FluxDU(i, j);
-        xMomentum(i, j) = xMomentum(i, j) - dt / area / jacobian(i, j) * xMomentumResidual_ij;
-        if (i == 25 && j == 2)
-        {
-          std::cout << (dy * eq2FluxLR(i + 1, j) -
-                        dy * eq2FluxLR(i, j) +
-                        dx * eq2FluxDU(i, j + 1) -
-                        dx * eq2FluxDU(i, j))
-                    << std::endl;
-        }
-
-        precision_t yMomentumResidual_ij = (dy * eq3FluxLR(i + 1, j) -
-                                            dy * eq3FluxLR(i, j) +
-                                            dx * eq3FluxDU(i, j + 1) -
-                                            dx * eq3FluxDU(i, j));
-        if (i == 25 && j == 2)
-        {
-          std::cout << (dy * eq3FluxLR(i + 1, j) -
-                        dy * eq3FluxLR(i, j) +
-                        dx * eq3FluxDU(i, j + 1) -
-                        dx * eq3FluxDU(i, j))
-                    << std::endl;
-        }
-        yMomentum(i, j) = yMomentum(i, j) - dt / area / jacobian(i, j) * yMomentumResidual_ij;
-
-        precision_t rhoEResidual_ij = (dy * eq4FluxLR(i + 1, j) -
-                                         dy * eq4FluxLR(i, j) +
-                                         dx * eq4FluxDU(i, j + 1) -
-                                         dx * eq4FluxDU(i, j));
-        rhoE(i, j) = rhoE(i,j) - dt / area / jacobian(i, j) * rhoEResidual_ij;
-
-        if (i == 25 && j == 2)
-        {
-          std::cout << (dy * eq4FluxLR(i + 1, j) -
-                        dy * eq4FluxLR(i, j) +
-                        dx * eq4FluxDU(i, j + 1) -
-                        dx * eq4FluxDU(i, j))
-                    << std::endl;
-        }
-
-        residual_ij += std::abs(rhoResidual_ij) + std::abs(xMomentumResidual_ij) +
-                       std::abs(yMomentumResidual_ij) + std::abs(rhoEResidual_ij);
-      }
+    if (int((current_time - dt)/dtOut) != int((current_time )/dtOut)) {
+      std::cout << "> Outputing at time : " << current_time << "\n";
+      output(rho, "rho.txt", true);
+      output(xVel, "xvel.txt", true);
+      output(yVel, "yvel.txt", true);
+      output(temp, "temp.txt", true);
     }
-    std::cout << "L1 Residual Norm : " << residual_ij << "\n";
-
-    // ------------------------------------------------
-    // Exchange messages (set BCs, really):
-
-    if (verbose > 3)
-      std::cout << "Outputing\n";
-
-    // if (int((current_time - dt)/dtOut) != int((current_time )/dtOut)) {
-    std::cout << "Outputing at time : " << current_time << "\n";
-    output(rho, "rho.txt", true);
-    output(xVel, "xvel.txt", true);
-    output(yVel, "yvel.txt", true);
-    output(rhoE, "rhoe.txt", true);
-    // output(rhoL, "rhor.txt", false);
-    // output(rhoR, "rhol.txt", false);
-    // }
   }
 
-  arma_mat xVelSph_output = xVel%A11 + yVel%A12;
-  arma_mat yVelSph_output = xVel%A21 + yVel%A22;
-  output(xVelSph_output, "xvel_sph.txt", true);
-  output(yVelSph_output, "yvel_sph.txt", true);
   return 0;
 }
