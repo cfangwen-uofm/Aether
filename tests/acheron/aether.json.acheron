@@ -29,8 +29,8 @@
 	"is" : true},
 
     "GeoBlockSize" : {
-	"nLons" : 128,
-	"nLats" : 128,
+	"nLons" : 32,
+	"nLats" : 32,
 	"nAlts" : 1
     },
 
