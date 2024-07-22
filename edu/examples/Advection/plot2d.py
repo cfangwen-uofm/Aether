@@ -3,6 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
+import matplotlib.cm as cm
 
 # ----------------------------------------------------------------------
 # Function to parse input arguments
@@ -38,15 +39,28 @@ def read_file(file):
             line = lines[iL]
             aline = line.split()
             v = np.array(aline).astype(float)
-            values[iTime][i][:] = v
+            values[iTime, i, :] = v
 
     return values
 
-def plot_data(values, fileout, mini, maxi):
+def plot_data(values, fileout, mini, maxi, lats = 0, lons = 0, vSave = 0):
+
+    if (mini < 0):
+        cmap = cm.bwr
+    else:
+        cmap = cm.plasma
 
     fig = plt.figure(figsize = (10,10))
-    ax = fig.add_subplot(111)
-    ax.pcolor(v, vmin = mini, vmax = maxi)
+    ax = fig.add_subplot(221)
+    ax2 = fig.add_subplot(222)
+    if (len(lats) < 2):
+        ax.pcolor(v, vmin = mini, vmax = maxi, cmap=cmap)
+    else:
+        ax.scatter(lons, lats, c = values, vmin = mini, vmax = maxi, cmap=cmap)
+        iHalf = int(len(lats[0,:])/2)
+        ax2.plot(lons[:,iHalf], values[:,iHalf])
+        if (len(vSave) > 2):
+            ax2.plot(lons[:,iHalf], vSave[:,iHalf])
 
     fig.savefig(fileout)
     plt.close()
@@ -58,6 +72,8 @@ if (not np.isscalar(filein)):
     filein = filein[0]
 
 values = read_file(filein)
+lats = read_file('lat.txt') * 180.0 / np.pi
+lons = read_file('lon.txt') * 180.0 / np.pi
 
 n = len(values)
 if (n > 20):
@@ -78,9 +94,11 @@ print(mini,maxi)
 
 for i in range(0, n, nSkip):
     print("Plotting time : ", i, " of ", n)
-    v = values[i].transpose()
+    v = values[i]
+    if (i == 0):
+        vSave = v
     fileout = filein+'.%04d.png' % i
-    plot_data(v, fileout, mini, maxi)
+    plot_data(v, fileout, mini, maxi, lats = lats[0], lons = lons[0], vSave = vSave)
     
 
 
